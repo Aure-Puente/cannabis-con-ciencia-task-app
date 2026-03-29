@@ -30,8 +30,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "1b55cfd3-b72d-403c-a27b-359794617041"
+        "projectId": "0bf71ce5-a18f-41d0-9539-0ae0341dfaaf"
       }
-    }
+    },
+    "owner": "aurex"
   }
 }
