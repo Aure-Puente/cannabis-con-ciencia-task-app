@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Cannabis Con Ciencia",
+    "slug": "cannabis-con-ciencia-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "scheme": "cannabisconciencia",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.aure.cannabisconciencia",
+      "label": "Cannabis Con Ciencia",
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F8F3",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/logo.png"
+    },
+    "experiments": {
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1b55cfd3-b72d-403c-a27b-359794617041"
+      }
+    }
+  }
+}
