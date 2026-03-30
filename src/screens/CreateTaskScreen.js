@@ -1,5 +1,6 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -16,7 +17,6 @@ import {
   Button,
   Card,
   Dialog,
-  Menu,
   Portal,
   SegmentedButtons,
   Text,
@@ -44,16 +44,19 @@ export default function CreateTaskScreen({ navigation }) {
 
   const [assignedTo, setAssignedTo] = useState(user?.uid || "");
   const [assignedToName, setAssignedToName] = useState(user?.name || "Yo");
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [assignDialogVisible, setAssignDialogVisible] = useState(false);
 
   const [successVisible, setSuccessVisible] = useState(false);
 
+  const [dueDate, setDueDate] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   useEffect(() => {
     if (user?.uid) {
-      setAssignedTo(user.uid);
-      setAssignedToName(user.name || "Yo");
+      setAssignedTo(String(user.uid));
+      setAssignedToName(user.name || user.email || "Yo");
     }
-  }, [user?.uid, user?.name]);
+  }, [user]);
 
   useEffect(() => {
     loadUsers();
@@ -63,7 +66,8 @@ export default function CreateTaskScreen({ navigation }) {
     try {
       setUsersLoading(true);
       const data = await getAllUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      const safeUsers = Array.isArray(data) ? data : [];
+      setUsers(safeUsers);
     } catch (error) {
       console.log("LOAD USERS ERROR:", error);
       setUsers([]);
@@ -73,25 +77,74 @@ export default function CreateTaskScreen({ navigation }) {
   };
 
   const selectableUsers = useMemo(() => {
-    const selfUser = {
-      uid: user?.uid,
-      name: user?.name || "Yo",
-      email: user?.email || "",
-    };
+    const normalizedDbUsers = (users || [])
+      .map((item) => ({
+        uid: String(item?.uid || item?.id || ""),
+        name: item?.name || item?.nombre || "",
+        email: item?.email || "",
+      }))
+      .filter((item) => item.uid);
 
-    const merged = [selfUser, ...(users || [])];
+    const selfUser = user?.uid
+      ? {
+          uid: String(user.uid),
+          name: user?.name || "Yo",
+          email: user?.email || "",
+        }
+      : null;
+
+    const merged = selfUser ? [selfUser, ...normalizedDbUsers] : normalizedDbUsers;
 
     return merged.filter(
       (item, index, arr) =>
         item?.uid &&
-        arr.findIndex((u) => u?.uid === item.uid) === index
+        arr.findIndex((u) => String(u?.uid) === String(item.uid)) === index
     );
-  }, [users, user?.uid, user?.name, user?.email]);
+  }, [users, user]);
 
   const handleSelectUser = (selectedUser) => {
-    setAssignedTo(selectedUser.uid);
+    setAssignedTo(String(selectedUser.uid));
     setAssignedToName(selectedUser.name || selectedUser.email || "Usuario");
-    setMenuVisible(false);
+    setAssignDialogVisible(false);
+  };
+
+  const normalizeDateToEndOfDay = (date) => {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  };
+
+  const handleOpenDatePicker = () => {
+    setShowDatePicker(true);
+  };
+
+  const handleDateChange = (_event, selectedDate) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+
+    if (selectedDate) {
+      const finalDate = normalizeDateToEndOfDay(selectedDate);
+      setDueDate(finalDate);
+    }
+  };
+
+  const handleConfirmIOSDate = () => {
+    setShowDatePicker(false);
+  };
+
+  const handleClearDate = () => {
+    setDueDate(null);
+  };
+
+  const formatDateLabel = (date) => {
+    if (!date) return "Seleccionar fecha";
+
+    return new Intl.DateTimeFormat("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
   };
 
   const handleCreateTask = async () => {
@@ -112,17 +165,21 @@ export default function CreateTaskScreen({ navigation }) {
         title: title.trim(),
         description: description.trim(),
         priority,
-        createdBy: user.uid,
-        createdByName: user.name || "Usuario",
-        assignedTo,
+        createdBy: user?.uid ? String(user.uid) : "",
+        createdByName: user?.name || "Usuario",
+        assignedTo: String(assignedTo),
         assignedToName,
+        dueDate: dueDate ? dueDate.toISOString() : null,
+        dueDateTimestamp: dueDate ? dueDate.getTime() : null,
+        hasDueDate: !!dueDate,
       });
 
       setTitle("");
       setDescription("");
       setPriority("media");
-      setAssignedTo(user.uid);
-      setAssignedToName(user.name || "Yo");
+      setAssignedTo(user?.uid ? String(user.uid) : "");
+      setAssignedToName(user?.name || user?.email || "Yo");
+      setDueDate(null);
 
       setSuccessVisible(true);
     } catch (error) {
@@ -135,15 +192,15 @@ export default function CreateTaskScreen({ navigation }) {
 
   const handleCloseSuccess = () => {
     setSuccessVisible(false);
-    navigation.navigate("Inicio");
+    navigation.navigate("Tareas");
   };
 
   const prioritySummary =
-    priority === "alta"
-      ? "Alta prioridad"
+    priority === "baja"
+      ? "Baja prioridad"
       : priority === "media"
       ? "Prioridad media"
-      : "Baja prioridad";
+      : "Alta prioridad";
 
   return (
     <>
@@ -238,28 +295,107 @@ export default function CreateTaskScreen({ navigation }) {
                   style={styles.segmented}
                   buttons={[
                     {
-                      value: "alta",
-                      label: "Alta",
+                      value: "baja",
+                      label: "Baja",
                       checkedColor: "#FFFFFF",
-                      uncheckedColor: "#7A1F1F",
-                      style: priority === "alta" ? styles.segmentHigh : styles.segmentDefault,
+                      uncheckedColor: "#256C35",
+                      style:
+                        priority === "baja"
+                          ? styles.segmentLow
+                          : styles.segmentDefault,
                     },
                     {
                       value: "media",
                       label: "Media",
                       checkedColor: "#FFFFFF",
                       uncheckedColor: "#8A6A10",
-                      style: priority === "media" ? styles.segmentMedium : styles.segmentDefault,
+                      style:
+                        priority === "media"
+                          ? styles.segmentMedium
+                          : styles.segmentDefault,
                     },
                     {
-                      value: "baja",
-                      label: "Baja",
+                      value: "alta",
+                      label: "Alta",
                       checkedColor: "#FFFFFF",
-                      uncheckedColor: "#256C35",
-                      style: priority === "baja" ? styles.segmentLow : styles.segmentDefault,
+                      uncheckedColor: "#7A1F1F",
+                      style:
+                        priority === "alta"
+                          ? styles.segmentHigh
+                          : styles.segmentDefault,
                     },
                   ]}
                 />
+
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleRow}>
+                    <View style={styles.sectionIconWrap}>
+                      <MaterialCommunityIcons
+                        name="calendar-month-outline"
+                        size={16}
+                        color={theme.colors.primary}
+                      />
+                    </View>
+                    <Text variant="titleSmall" style={styles.label}>
+                      Fecha límite
+                    </Text>
+                  </View>
+
+                  <Text style={styles.sectionHint}>
+                    Podés elegir una fecha para mostrarla luego en el calendario.
+                  </Text>
+                </View>
+
+                <Pressable onPress={handleOpenDatePicker} style={styles.assignTrigger}>
+                  <View style={styles.assignLeft}>
+                    <View style={styles.assignAvatar}>
+                      <MaterialCommunityIcons
+                        name="calendar-outline"
+                        size={18}
+                        color={theme.colors.primary}
+                      />
+                    </View>
+
+                    <View style={styles.assignTextWrap}>
+                      <Text style={styles.assignLabel}>Vencimiento</Text>
+                      <Text style={styles.assignValue}>
+                        {dueDate ? formatDateLabel(dueDate) : "Seleccionar fecha"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chevronBadge}>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#6B7280"
+                    />
+                  </View>
+                </Pressable>
+
+                {dueDate ? (
+                  <View style={styles.dateActionsRow}>
+                    <Button
+                      mode="text"
+                      onPress={handleOpenDatePicker}
+                      textColor={theme.colors.primary}
+                      icon="pencil-outline"
+                      compact
+                    >
+                      Cambiar
+                    </Button>
+
+                    <Button
+                      mode="text"
+                      onPress={handleClearDate}
+                      textColor="#B3261E"
+                      icon="close-circle-outline"
+                      compact
+                    >
+                      Quitar
+                    </Button>
+                  </View>
+                ) : null}
 
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionTitleRow}>
@@ -276,59 +412,45 @@ export default function CreateTaskScreen({ navigation }) {
                   </View>
                 </View>
 
-                <Menu
-                  visible={menuVisible}
-                  onDismiss={() => setMenuVisible(false)}
-                  anchorPosition="bottom"
-                  contentStyle={styles.menuContent}
-                  anchor={
-                    <Pressable onPress={() => setMenuVisible(true)} style={styles.assignTrigger}>
-                      <View style={styles.assignLeft}>
-                        <View style={styles.assignAvatar}>
-                          <MaterialCommunityIcons
-                            name="account-outline"
-                            size={18}
-                            color={theme.colors.primary}
-                          />
-                        </View>
-
-                        <View style={styles.assignTextWrap}>
-                          <Text style={styles.assignLabel}>Responsable</Text>
-                          <Text style={styles.assignValue}>
-                            {usersLoading ? "Cargando usuarios..." : assignedToName || "Seleccionar"}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.chevronBadge}>
-                        {usersLoading ? (
-                          <ActivityIndicator size={16} color={theme.colors.primary} />
-                        ) : (
-                          <MaterialCommunityIcons
-                            name="chevron-down"
-                            size={20}
-                            color="#6B7280"
-                          />
-                        )}
-                      </View>
-                    </Pressable>
-                  }
+                <Pressable
+                  onPress={() => {
+                    if (!usersLoading) {
+                      setAssignDialogVisible(true);
+                    }
+                  }}
+                  style={styles.assignTrigger}
                 >
-                  {selectableUsers.map((item) => (
-                    <Menu.Item
-                      key={item.uid}
-                      onPress={() => handleSelectUser(item)}
-                      title={
-                        item.uid === user?.uid
-                          ? `${item.name || "Yo"} (Yo)`
-                          : item.name || item.email || "Usuario"
-                      }
-                      leadingIcon={
-                        item.uid === assignedTo ? "check-circle" : "account-outline"
-                      }
-                    />
-                  ))}
-                </Menu>
+                  <View style={styles.assignLeft}>
+                    <View style={styles.assignAvatar}>
+                      <MaterialCommunityIcons
+                        name="account-outline"
+                        size={18}
+                        color={theme.colors.primary}
+                      />
+                    </View>
+
+                    <View style={styles.assignTextWrap}>
+                      <Text style={styles.assignLabel}>Responsable</Text>
+                      <Text style={styles.assignValue}>
+                        {usersLoading
+                          ? "Cargando usuarios..."
+                          : assignedToName || "Seleccionar"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chevronBadge}>
+                    {usersLoading ? (
+                      <ActivityIndicator size={16} color={theme.colors.primary} />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="chevron-right"
+                        size={20}
+                        color="#6B7280"
+                      />
+                    )}
+                  </View>
+                </Pressable>
 
                 <View style={styles.infoBox}>
                   <MaterialCommunityIcons
@@ -360,8 +482,121 @@ export default function CreateTaskScreen({ navigation }) {
         </KeyboardAvoidingView>
       </View>
 
+      {showDatePicker && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={dueDate || new Date()}
+          mode="date"
+          display="default"
+          minimumDate={new Date()}
+          onChange={handleDateChange}
+          accentColor="#4E7A28"
+        />
+      ) : null}
+
       <Portal>
-        <Dialog visible={successVisible} onDismiss={handleCloseSuccess} style={styles.successDialog}>
+        <Dialog
+          visible={showDatePicker && Platform.OS === "ios"}
+          onDismiss={() => setShowDatePicker(false)}
+          style={styles.dateDialog}
+        >
+          <Dialog.Title style={styles.selectDialogTitle}>
+            Seleccionar fecha límite
+          </Dialog.Title>
+
+          <Dialog.Content>
+            <DateTimePicker
+              value={dueDate || new Date()}
+              mode="date"
+              display="spinner"
+              minimumDate={new Date()}
+              onChange={handleDateChange}
+              style={styles.iosDatePicker}
+            />
+          </Dialog.Content>
+
+          <Dialog.Actions>
+            <Button onPress={() => setShowDatePicker(false)}>Cancelar</Button>
+            <Button onPress={handleConfirmIOSDate}>Aceptar</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={assignDialogVisible}
+          onDismiss={() => setAssignDialogVisible(false)}
+          style={styles.selectDialog}
+        >
+          <Dialog.Title style={styles.selectDialogTitle}>
+            Seleccionar responsable
+          </Dialog.Title>
+
+          <Dialog.ScrollArea style={styles.selectDialogScrollArea}>
+            <ScrollView
+              style={styles.selectScroll}
+              contentContainerStyle={styles.selectScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectableUsers.length > 0 ? (
+                selectableUsers.map((item) => {
+                  const isSelected = String(item.uid) === String(assignedTo);
+
+                  return (
+                    <Pressable
+                      key={item.uid}
+                      onPress={() => handleSelectUser(item)}
+                      style={[
+                        styles.userOption,
+                        isSelected && styles.userOptionSelected,
+                      ]}
+                    >
+                      <View style={styles.userOptionLeft}>
+                        <View
+                          style={[
+                            styles.userAvatar,
+                            isSelected && styles.userAvatarSelected,
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name={isSelected ? "check" : "account-outline"}
+                            size={18}
+                            color={isSelected ? "#FFFFFF" : theme.colors.primary}
+                          />
+                        </View>
+
+                        <View style={styles.userTextWrap}>
+                          <Text style={styles.userName}>
+                            {String(item.uid) === String(user?.uid)
+                              ? `${item.name || item.email || "Yo"} (Yo)`
+                              : item.name || item.email || "Usuario"}
+                          </Text>
+
+                          {!!item.email && (
+                            <Text style={styles.userEmail}>{item.email}</Text>
+                          )}
+                        </View>
+                      </View>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyUsersBox}>
+                  <Text style={styles.emptyUsersText}>
+                    No hay usuarios disponibles.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
+
+          <Dialog.Actions>
+            <Button onPress={() => setAssignDialogVisible(false)}>Cerrar</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={successVisible}
+          onDismiss={handleCloseSuccess}
+          style={styles.successDialog}
+        >
           <Dialog.Content style={styles.successDialogContent}>
             <View style={styles.successIconCircle}>
               <MaterialCommunityIcons name="check-bold" size={30} color="#FFFFFF" />
@@ -537,7 +772,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 16,
+    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -585,9 +820,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  menuContent: {
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+  dateActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 14,
+    marginTop: -2,
   },
 
   infoBox: {
@@ -621,6 +859,102 @@ const styles = StyleSheet.create({
   saveButtonLabel: {
     fontSize: 15,
     fontWeight: "700",
+  },
+
+  dateDialog: {
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+  },
+
+  iosDatePicker: {
+    alignSelf: "center",
+  },
+
+  selectDialog: {
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+  },
+
+  selectDialogTitle: {
+    color: "#234015",
+    fontWeight: "800",
+  },
+
+  selectDialogScrollArea: {
+    paddingHorizontal: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+  },
+
+  selectScroll: {
+    maxHeight: 320,
+  },
+
+  selectScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+
+  userOption: {
+    minHeight: 64,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E7EDE1",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    justifyContent: "center",
+  },
+
+  userOptionSelected: {
+    borderColor: "#4E7A28",
+    backgroundColor: "#F7FBF3",
+  },
+
+  userOptionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  userAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: "#F6F9F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  userAvatarSelected: {
+    backgroundColor: "#4E7A28",
+  },
+
+  userTextWrap: {
+    flex: 1,
+  },
+
+  userName: {
+    fontSize: 14.5,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 2,
+  },
+
+  userEmail: {
+    fontSize: 12.5,
+    color: "#6B7280",
+  },
+
+  emptyUsersBox: {
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+
+  emptyUsersText: {
+    fontSize: 13,
+    color: "#6B7280",
   },
 
   successDialog: {
@@ -661,7 +995,7 @@ const styles = StyleSheet.create({
   successButton: {
     borderRadius: 14,
     alignSelf: "stretch",
-    marginBottom: 15
+    marginBottom: 15,
   },
 
   successButtonContent: {

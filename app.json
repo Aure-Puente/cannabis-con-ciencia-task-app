@@ -33,6 +33,9 @@
         "projectId": "0bf71ce5-a18f-41d0-9539-0ae0341dfaaf"
       }
     },
-    "owner": "aurex"
+    "owner": "aurex",
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }

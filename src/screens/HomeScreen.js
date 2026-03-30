@@ -1,8 +1,9 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
-import { Button, Card, Text, useTheme } from "react-native-paper";
+import { ActivityIndicator, Button, Card, FAB, Text, useTheme } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { getAllTasks } from "../services/taskService";
@@ -31,29 +32,35 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
 
   const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     try {
+      setLoading(true);
       const data = await getAllTasks();
       setTasks(Array.isArray(data) ? data.filter(Boolean) : []);
     } catch (error) {
       console.log("LOAD TASKS HOME ERROR:", error);
       setTasks([]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    if (user?.uid) {
-      loadTasks();
-    }
-  }, [user?.uid]);
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.uid) {
+        loadTasks();
+      }
+    }, [user?.uid, loadTasks])
+  );
 
   const stats = useMemo(() => {
     const total = tasks.length;
     const completed = tasks.filter((task) => task.completed).length;
     const pending = tasks.filter((task) => !task.completed).length;
     const assignedToMe = tasks.filter(
-      (task) => task.assignedTo === user?.uid
+      (task) => String(task.assignedTo) === String(user?.uid)
     ).length;
 
     return { total, completed, pending, assignedToMe };
@@ -78,13 +85,24 @@ export default function HomeScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: 120 + insets.bottom },
+          { paddingBottom: 140 + insets.bottom },
         ]}
       >
         <View style={styles.header}>
-          <Text variant="headlineMedium" style={styles.title}>
-            Hola, {displayName}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text variant="headlineMedium" style={styles.title}>
+              Hola, {displayName}
+            </Text>
+
+            <View style={styles.loadingSlot}>
+              {loading ? (
+                <View style={styles.refreshBadge}>
+                  <ActivityIndicator size={12} color={theme.colors.primary} />
+                  <Text style={styles.refreshText}>Actualizando</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
 
           <Text variant="bodyMedium" style={styles.subtitle}>
             Bienvenido. Acá podés ver el estado general de las tareas del
@@ -161,6 +179,20 @@ export default function HomeScreen({ navigation }) {
           </Button>
         </View>
       </ScrollView>
+
+      <FAB
+        icon="calendar-month-outline"
+        onPress={() => navigation.navigate("Calendario")}
+        style={[
+          styles.fab,
+          {
+            bottom: insets.bottom + 55,
+            backgroundColor: theme.colors.primary,
+          },
+        ]}
+        color="#FFFFFF"
+        customSize={58}
+      />
     </View>
   );
 }
@@ -199,10 +231,40 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  loadingSlot: {
+    minWidth: 98,
+    alignItems: "flex-end",
+  },
+
+  refreshBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#DCE6D3",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  refreshText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#4E7A28",
+  },
+
   title: {
     fontWeight: "800",
     color: "#234015",
-    marginBottom: 8,
+    flexShrink: 1,
   },
 
   subtitle: {
@@ -319,5 +381,12 @@ const styles = StyleSheet.create({
 
   secondaryButtonContent: {
     height: 50,
+  },
+
+  fab: {
+    position: "absolute",
+    right: 16,
+    borderRadius: 18,
+    elevation: 6,
   },
 });

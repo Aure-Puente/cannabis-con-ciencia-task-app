@@ -55,6 +55,94 @@ function getStatusSoft(completed) {
   return completed ? "rgba(46,125,50,0.10)" : "rgba(107,114,128,0.10)";
 }
 
+function getDueDateFromTask(task) {
+  if (task?.dueDateTimestamp) {
+    const date = new Date(task.dueDateTimestamp);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (task?.dueDate) {
+    const date = new Date(task.dueDate);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function formatDueDate(date) {
+  if (!date) return "-";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function getStartOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getDueDateInfo(task) {
+  const dueDate = getDueDateFromTask(task);
+
+  if (!dueDate) {
+    return {
+      date: null,
+      label: null,
+      color: "#6B7280",
+      soft: "rgba(107,114,128,0.10)",
+      icon: "calendar-blank-outline",
+    };
+  }
+
+  const today = getStartOfDay(new Date());
+  const dueDay = getStartOfDay(dueDate);
+  const diffMs = dueDay.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / 86400000);
+  const isCompleted = !!task?.completed;
+
+  if (!isCompleted && diffDays < 0) {
+    return {
+      date: dueDate,
+      label: "Vencida",
+      color: "#C62828",
+      soft: "rgba(198,40,40,0.10)",
+      icon: "alert-circle-outline",
+    };
+  }
+
+  if (!isCompleted && diffDays === 0) {
+    return {
+      date: dueDate,
+      label: "Vence hoy",
+      color: "#B7791F",
+      soft: "rgba(183,121,31,0.12)",
+      icon: "calendar-today",
+    };
+  }
+
+  if (!isCompleted && diffDays > 0 && diffDays <= 2) {
+    return {
+      date: dueDate,
+      label: "Próxima",
+      color: "#2563EB",
+      soft: "rgba(37,99,235,0.10)",
+      icon: "calendar-clock",
+    };
+  }
+
+  return {
+    date: dueDate,
+    label: "Programada",
+    color: "#4E7A28",
+    soft: "rgba(78,122,40,0.10)",
+    icon: "calendar-check-outline",
+  };
+}
+
 export default function TaskCard({
   task,
   onToggle,
@@ -69,6 +157,8 @@ export default function TaskCard({
 
   const isCompleted = !!task.completed;
   const showDrag = typeof onDrag === "function";
+  const dueInfo = getDueDateInfo(task);
+  const hasDueDate = !!dueInfo.date;
 
   return (
     <Card
@@ -97,10 +187,6 @@ export default function TaskCard({
                 {task.title || "Sin título"}
               </Text>
             </View>
-
-            <Text style={styles.smallStatusText}>
-              {isCompleted ? "Tarea completada" : "Tarea pendiente"}
-            </Text>
           </View>
 
           {showDrag ? (
@@ -122,7 +208,7 @@ export default function TaskCard({
           )}
         </View>
 
-        <View style={styles.badgesRow}>
+        <View style={styles.topBadgesRow}>
           <View
             style={[
               styles.badge,
@@ -171,6 +257,24 @@ export default function TaskCard({
             </Text>
           </View>
         </View>
+
+        {hasDueDate ? (
+          <View style={styles.dueDateRow}>
+            <View style={styles.dueDateLeft}>
+              <MaterialCommunityIcons
+                name="calendar-month-outline"
+                size={16}
+                color="#667085"
+              />
+              <Text style={styles.metaText}>
+                Fecha límite{" "}
+                <Text style={styles.metaStrong}>
+                  {formatDueDate(dueInfo.date)}
+                </Text>
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         {!!task.description && (
           <View style={styles.descriptionBox}>
@@ -317,14 +421,6 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
 
-  smallStatusText: {
-    marginTop: 6,
-    marginLeft: 18,
-    fontSize: 12.5,
-    color: "#6B7280",
-    fontWeight: "600",
-  },
-
   dragHandle: {
     width: 38,
     height: 38,
@@ -344,11 +440,33 @@ const styles = StyleSheet.create({
     width: 38,
   },
 
-  badgesRow: {
+  topBadgesRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-start",
     gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+
+  dueDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 10,
     marginBottom: 12,
+    flexWrap: "wrap",
+  },
+
+  dueDateLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
+
+  dueBadge: {
+    flexShrink: 0,
   },
 
   badge: {

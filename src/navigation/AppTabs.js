@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { Text, useTheme } from "react-native-paper";
+import CalendarScreen from "../screens/CalendarScreen";
 import CreateTaskScreen from "../screens/CreateTaskScreen";
 import HomeScreen from "../screens/HomeScreen";
 import ProfileScreen from "../screens/ProfileScreen";
@@ -126,8 +127,13 @@ function TabIconLabel({ routeName, color, size, focused, primary }) {
   }
 
   if (routeName === "Tareas") {
-    iconName = focused ? "format-list-checks" : "format-list-checks";
+    iconName = "format-list-checks";
     label = "Tareas";
+  }
+
+  if (routeName === "Calendario") {
+    iconName = focused ? "calendar-month" : "calendar-month-outline";
+    label = "Calendario";
   }
 
   if (routeName === "Nueva tarea") {
@@ -229,6 +235,12 @@ export default function AppTabs() {
         name="Tareas"
         component={TasksStackNavigator}
         options={{ title: "Tareas" }}
+      />
+
+      <Tab.Screen
+        name="Calendario"
+        component={CalendarScreen}
+        options={{ title: "Calendario" }}
       />
 
       <Tab.Screen
