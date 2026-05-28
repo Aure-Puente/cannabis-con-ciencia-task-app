@@ -5,10 +5,10 @@ import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { Text, useTheme } from "react-native-paper";
 import CalendarScreen from "../screens/CalendarScreen";
-import CreateTaskScreen from "../screens/CreateTaskScreen";
-import HomeScreen from "../screens/HomeScreen";
+import DriveScreen from "../screens/DriveScreen";
 import ProfileScreen from "../screens/ProfileScreen";
-import TasksStackNavigator from "./TasksStackNavigator";
+import TaskHistoryScreen from "../screens/TaskHistoryScreen";
+import NotesStackNavigator from "./NotesStackNavigator";
 
 //JS:
 const Tab = createBottomTabNavigator();
@@ -121,24 +121,24 @@ function TabIconLabel({ routeName, color, size, focused, primary }) {
   let iconName = "home-outline";
   let label = routeName;
 
-  if (routeName === "Inicio") {
-    iconName = focused ? "home" : "home-outline";
-    label = "Inicio";
+  if (routeName === "Drive") {
+    iconName = "google-drive";
+    label = "Drive";
+  }
+
+  if (routeName === "Notas") {
+    iconName = focused ? "notebook-edit" : "notebook-edit-outline";
+    label = "Notas";
   }
 
   if (routeName === "Tareas") {
-    iconName = "format-list-checks";
+    iconName = focused ? "calendar-month" : "calendar-month-outline";
     label = "Tareas";
   }
 
-  if (routeName === "Calendario") {
-    iconName = focused ? "calendar-month" : "calendar-month-outline";
-    label = "Calendario";
-  }
-
-  if (routeName === "Nueva tarea") {
-    iconName = focused ? "plus-circle" : "plus-circle-outline";
-    label = "Nueva";
+  if (routeName === "Historial") {
+    iconName = focused ? "clipboard-check" : "clipboard-check-outline";
+    label = "Historial";
   }
 
   if (routeName === "Perfil") {
@@ -181,6 +181,7 @@ export default function AppTabs() {
 
   return (
     <Tab.Navigator
+      initialRouteName="Tareas"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: primary,
@@ -214,7 +215,7 @@ export default function AppTabs() {
           />
         ),
 
-        tabBarIcon: ({ color, size, focused }) => (
+        tabBarIcon: ({ color, focused }) => (
           <TabIconLabel
             routeName={route.name}
             color={color}
@@ -226,27 +227,27 @@ export default function AppTabs() {
       })}
     >
       <Tab.Screen
-        name="Inicio"
-        component={HomeScreen}
-        options={{ title: "Inicio" }}
+        name="Drive"
+        component={DriveScreen}
+        options={{ title: "Drive" }}
+      />
+
+      <Tab.Screen
+        name="Notas"
+        component={NotesStackNavigator}
+        options={{ title: "Notas" }}
       />
 
       <Tab.Screen
         name="Tareas"
-        component={TasksStackNavigator}
+        component={CalendarScreen}
         options={{ title: "Tareas" }}
       />
 
       <Tab.Screen
-        name="Calendario"
-        component={CalendarScreen}
-        options={{ title: "Calendario" }}
-      />
-
-      <Tab.Screen
-        name="Nueva tarea"
-        component={CreateTaskScreen}
-        options={{ title: "Nueva tarea" }}
+        name="Historial"
+        component={TaskHistoryScreen}
+        options={{ title: "Historial" }}
       />
 
       <Tab.Screen

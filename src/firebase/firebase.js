@@ -1,4 +1,4 @@
-//Forebase:
+//Firebase:
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
 import {
