@@ -4,11 +4,11 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { Text, useTheme } from "react-native-paper";
-import CalendarScreen from "../screens/CalendarScreen";
 import DriveScreen from "../screens/DriveScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import TaskHistoryScreen from "../screens/TaskHistoryScreen";
 import NotesStackNavigator from "./NotesStackNavigator";
+import TasksCalendarStackNavigator from "./TasksCalendarStackNavigator";
 
 //JS:
 const Tab = createBottomTabNavigator();
@@ -219,7 +219,7 @@ export default function AppTabs() {
           <TabIconLabel
             routeName={route.name}
             color={color}
-            size={22}
+            size={27}
             focused={focused}
             primary={primary}
           />
@@ -240,7 +240,7 @@ export default function AppTabs() {
 
       <Tab.Screen
         name="Tareas"
-        component={CalendarScreen}
+        component={TasksCalendarStackNavigator}
         options={{ title: "Tareas" }}
       />
 
@@ -293,17 +293,18 @@ const styles = StyleSheet.create({
   },
 
   iconPill: {
-    minWidth: 42,
-    height: 34,
+    minWidth: 46,
+    height: 36,
     paddingHorizontal: 10,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 5,
+    marginBottom: 4,
   },
 
   customLabel: {
-    fontSize: 11,
-    marginBottom: 8,
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginBottom: 6,
   },
 });

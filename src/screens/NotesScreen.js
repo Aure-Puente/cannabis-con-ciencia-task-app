@@ -1,7 +1,7 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StatusBar, StyleSheet, View } from "react-native";
 import {
   ActivityIndicator,
@@ -40,6 +40,9 @@ export default function NotesScreen({ navigation }) {
 
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState(null);
+
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -57,37 +60,55 @@ export default function NotesScreen({ navigation }) {
     }
   }, []);
 
+  const filteredNotes = useMemo(() => {
+    if (!activeCategoryFilter) return notes;
+
+    return notes.filter(
+      (note) => String(note?.categoryKey) === String(activeCategoryFilter)
+    );
+  }, [notes, activeCategoryFilter]);
+
+  const selectedCategory = useMemo(() => {
+    if (!activeCategoryFilter) return null;
+
+    return getNoteCategoryByKey(activeCategoryFilter);
+  }, [activeCategoryFilter]);
+
+  const handleToggleCategoryFilter = (categoryKey) => {
+    setActiveCategoryFilter((prev) => (prev === categoryKey ? null : categoryKey));
+  };
+
   const handleAskDeleteNote = (note) => {
-      if (!note?.id) return;
+    if (!note?.id) return;
 
-      setNoteToDelete(note);
-      setDeleteDialogVisible(true);
-    };
+    setNoteToDelete(note);
+    setDeleteDialogVisible(true);
+  };
 
-    const handleCloseDeleteDialog = () => {
-      if (deleting) return;
+  const handleCloseDeleteDialog = () => {
+    if (deleting) return;
+
+    setDeleteDialogVisible(false);
+    setNoteToDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!noteToDelete?.id) return;
+
+    try {
+      setDeleting(true);
+
+      await deleteNote(noteToDelete.id);
 
       setDeleteDialogVisible(false);
       setNoteToDelete(null);
-    };
-
-    const handleConfirmDelete = async () => {
-      if (!noteToDelete?.id) return;
-
-      try {
-        setDeleting(true);
-
-        await deleteNote(noteToDelete.id);
-
-        setDeleteDialogVisible(false);
-        setNoteToDelete(null);
-        await loadNotes();
-      } catch (error) {
-        console.log("DELETE NOTE ERROR:", error);
-      } finally {
-        setDeleting(false);
-      }
-    };
+      await loadNotes();
+    } catch (error) {
+      console.log("DELETE NOTE ERROR:", error);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -96,220 +117,257 @@ export default function NotesScreen({ navigation }) {
   );
 
   return (
-  <>
-    <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F4F8F1" />
+    <>
+      <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F4F8F1" />
 
-      <View style={styles.backgroundShapeTop} />
-      <View style={styles.backgroundShapeBottom} />
+        <View style={styles.backgroundShapeTop} />
+        <View style={styles.backgroundShapeBottom} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: 130 + insets.bottom },
-        ]}
-      >
-        <View style={styles.headerBlock}>
-          <Text variant="headlineMedium" style={styles.title}>
-            Notas
-          </Text>
-
-          <Text variant="bodyMedium" style={styles.subtitle}>
-            Creá y consultá notas compartidas con todo el equipo.
-          </Text>
-        </View>
-
-        <Button
-          mode="contained"
-          onPress={() => navigation.navigate("Crear nota")}
-          style={styles.createButton}
-          contentStyle={styles.createButtonContent}
-          labelStyle={styles.createButtonLabel}
-          buttonColor={theme.colors.primary}
-          icon="plus"
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 130 + insets.bottom },
+          ]}
         >
-          Crear nota
-        </Button>
+          <View style={styles.headerBlock}>
+            <Text variant="headlineMedium" style={styles.title}>
+              Notas
+            </Text>
 
-        <View style={styles.categoriesPreview}>
-          {NOTE_CATEGORIES.map((category) => (
-            <View
-              key={category.key}
-              style={[
-                styles.categoryPreviewChip,
-                {
-                  backgroundColor: category.soft,
-                  borderColor: category.border,
-                },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name={category.icon}
-                size={13}
-                color={category.color}
-              />
-              <Text style={[styles.categoryPreviewText, { color: category.color }]}>
-                {category.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Notas creadas</Text>
-          <Text style={styles.sectionSubtitle}>
-            {loading
-              ? "Cargando notas..."
-              : `${notes.length} nota${notes.length === 1 ? "" : "s"} disponible${
-                  notes.length === 1 ? "" : "s"
-                }`}
-          </Text>
-        </View>
-
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Cargando notas...</Text>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              Creá y consultá notas compartidas con todo el equipo.
+            </Text>
           </View>
-        ) : notes.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Card.Content style={styles.emptyContent}>
-              <View style={styles.emptyIconCircle}>
-                <MaterialCommunityIcons
-                  name="notebook-outline"
-                  size={34}
-                  color={theme.colors.primary}
-                />
-              </View>
 
-              <Text variant="titleLarge" style={styles.emptyTitle}>
-                Todavía no hay notas
-              </Text>
+          <Button
+            mode="contained"
+            onPress={() => navigation.navigate("Crear nota")}
+            style={styles.createButton}
+            contentStyle={styles.createButtonContent}
+            labelStyle={styles.createButtonLabel}
+            buttonColor={theme.colors.primary}
+            icon="plus"
+          >
+            Crear nota
+          </Button>
 
-              <Text variant="bodyMedium" style={styles.emptyText}>
-                Creá la primera nota para empezar a organizar ideas, información
-                o recordatorios.
-              </Text>
-            </Card.Content>
-          </Card>
-        ) : (
-          <View style={styles.notesList}>
-            {notes.map((note) => {
-              const category = getNoteCategoryByKey(note.categoryKey);
+          <View style={styles.categoriesHeader}>
+            <Text style={styles.categoriesTitle}>Filtrar por categoría</Text>
+
+            {activeCategoryFilter ? (
+              <Button
+                mode="text"
+                compact
+                onPress={() => setActiveCategoryFilter(null)}
+                textColor="#667085"
+                style={styles.clearFilterButton}
+                labelStyle={styles.clearFilterLabel}
+              >
+                Limpiar
+              </Button>
+            ) : null}
+          </View>
+
+          <View style={styles.categoriesPreview}>
+            {NOTE_CATEGORIES.map((category) => {
+              const selected = activeCategoryFilter === category.key;
 
               return (
                 <Pressable
-                  key={note.id}
-                  onPress={() => navigation.navigate("Editar nota", { note })}
+                  key={category.key}
+                  onPress={() => handleToggleCategoryFilter(category.key)}
                   style={({ pressed }) => [
-                    styles.notePressable,
-                    pressed && styles.notePressablePressed,
+                    styles.categoryPreviewChip,
+                    {
+                      backgroundColor: selected ? category.color : category.soft,
+                      borderColor: selected ? category.color : category.border,
+                    },
+                    pressed && styles.categoryPreviewChipPressed,
                   ]}
                 >
-                  <Card style={styles.noteCard}>
-                    <Card.Content style={styles.noteContent}>
-                      <View style={styles.noteTopRow}>
-                        <View
-                          style={[
-                            styles.noteIconWrap,
-                            {
-                              backgroundColor: category.soft,
-                              borderColor: category.border,
-                            },
-                          ]}
-                        >
-                          <MaterialCommunityIcons
-                            name={category.icon}
-                            size={20}
-                            color={category.color}
-                          />
-                        </View>
+                  <MaterialCommunityIcons
+                    name={selected ? "check-circle" : category.icon}
+                    size={13}
+                    color={selected ? "#FFFFFF" : category.color}
+                  />
 
-                        <View style={styles.noteTextWrap}>
-                          <Text
-                            variant="titleMedium"
-                            style={styles.noteTitle}
-                            numberOfLines={2}
-                          >
-                            {note.title || "Sin título"}
-                          </Text>
-
-                          <View style={styles.noteMetaRow}>
-                            <MaterialCommunityIcons
-                              name="account-edit-outline"
-                              size={14}
-                              color="#667085"
-                            />
-
-                            <Text style={styles.noteMetaText} numberOfLines={1}>
-                              {note.updatedByName ||
-                                note.createdByName ||
-                                "Usuario"}{" "}
-                              · {formatFirestoreDate(note.updatedAt || note.createdAt)}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.noteActions}>
-                          <IconButton
-                            icon="trash-can-outline"
-                            size={20}
-                            mode="outlined"
-                            containerColor="#FFFFFF"
-                            iconColor="#C62828"
-                            style={styles.deleteNoteButton}
-                            onPress={() => handleAskDeleteNote(note)}
-                          />
-
-                          <MaterialCommunityIcons
-                            name="chevron-right"
-                            size={22}
-                            color="#98A2B3"
-                          />
-                        </View>
-                      </View>
-
-                      <View style={styles.noteFooter}>
-                        <Chip
-                          compact
-                          style={[
-                            styles.categoryChip,
-                            {
-                              backgroundColor: category.soft,
-                              borderColor: category.border,
-                            },
-                          ]}
-                          textStyle={[
-                            styles.categoryChipText,
-                            { color: category.color },
-                          ]}
-                          icon={() => (
-                            <MaterialCommunityIcons
-                              name={category.icon}
-                              size={14}
-                              color={category.color}
-                            />
-                          )}
-                        >
-                          {category.label}
-                        </Chip>
-
-                        <Text style={styles.previewText} numberOfLines={2}>
-                          {note.text || "Sin contenido"}
-                        </Text>
-                      </View>
-                    </Card.Content>
-                  </Card>
+                  <Text
+                    style={[
+                      styles.categoryPreviewText,
+                      { color: selected ? "#FFFFFF" : category.color },
+                    ]}
+                  >
+                    {category.label}
+                  </Text>
                 </Pressable>
               );
             })}
           </View>
-        )}
-      </ScrollView>
-    </View>
 
-    <Portal>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory
+                ? `Notas de ${selectedCategory.label}`
+                : "Notas creadas"}
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              {loading
+                ? "Cargando notas..."
+                : `${filteredNotes.length} nota${
+                    filteredNotes.length === 1 ? "" : "s"
+                  } disponible${filteredNotes.length === 1 ? "" : "s"}`}
+            </Text>
+          </View>
+
+          {loading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={styles.loadingText}>Cargando notas...</Text>
+            </View>
+          ) : filteredNotes.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Card.Content style={styles.emptyContent}>
+                <View style={styles.emptyIconCircle}>
+                  <MaterialCommunityIcons
+                    name="notebook-outline"
+                    size={34}
+                    color={theme.colors.primary}
+                  />
+                </View>
+
+                <Text variant="titleLarge" style={styles.emptyTitle}>
+                  {activeCategoryFilter
+                    ? "No hay notas en esta categoría"
+                    : "Todavía no hay notas"}
+                </Text>
+
+                <Text variant="bodyMedium" style={styles.emptyText}>
+                  {activeCategoryFilter
+                    ? "Probá limpiar el filtro o crear una nueva nota para esta categoría."
+                    : "Creá la primera nota para empezar a organizar ideas, información o recordatorios."}
+                </Text>
+              </Card.Content>
+            </Card>
+          ) : (
+            <View style={styles.notesList}>
+              {filteredNotes.map((note) => {
+                const category = getNoteCategoryByKey(note.categoryKey);
+
+                return (
+                  <Pressable
+                    key={note.id}
+                    onPress={() => navigation.navigate("Editar nota", { note })}
+                    style={({ pressed }) => [
+                      styles.notePressable,
+                      pressed && styles.notePressablePressed,
+                    ]}
+                  >
+                    <Card style={styles.noteCard}>
+                      <Card.Content style={styles.noteContent}>
+                        <View style={styles.noteTopRow}>
+                          <View
+                            style={[
+                              styles.noteIconWrap,
+                              {
+                                backgroundColor: category.soft,
+                                borderColor: category.border,
+                              },
+                            ]}
+                          >
+                            <MaterialCommunityIcons
+                              name={category.icon}
+                              size={20}
+                              color={category.color}
+                            />
+                          </View>
+
+                          <View style={styles.noteTextWrap}>
+                            <Text
+                              variant="titleMedium"
+                              style={styles.noteTitle}
+                              numberOfLines={2}
+                            >
+                              {note.title || "Sin título"}
+                            </Text>
+
+                            <View style={styles.noteMetaRow}>
+                              <MaterialCommunityIcons
+                                name="account-edit-outline"
+                                size={14}
+                                color="#667085"
+                              />
+
+                              <Text style={styles.noteMetaText} numberOfLines={1}>
+                                {note.updatedByName ||
+                                  note.createdByName ||
+                                  "Usuario"}{" "}
+                                · {formatFirestoreDate(note.updatedAt || note.createdAt)}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.noteActions}>
+                            <IconButton
+                              icon="trash-can-outline"
+                              size={20}
+                              mode="outlined"
+                              containerColor="#FFFFFF"
+                              iconColor="#C62828"
+                              style={styles.deleteNoteButton}
+                              onPress={() => handleAskDeleteNote(note)}
+                            />
+
+                            <MaterialCommunityIcons
+                              name="chevron-right"
+                              size={22}
+                              color="#98A2B3"
+                            />
+                          </View>
+                        </View>
+
+                        <View style={styles.noteFooter}>
+                          <Chip
+                            compact
+                            style={[
+                              styles.categoryChip,
+                              {
+                                backgroundColor: category.soft,
+                                borderColor: category.border,
+                              },
+                            ]}
+                            textStyle={[
+                              styles.categoryChipText,
+                              { color: category.color },
+                            ]}
+                            icon={() => (
+                              <MaterialCommunityIcons
+                                name={category.icon}
+                                size={14}
+                                color={category.color}
+                              />
+                            )}
+                          >
+                            {category.label}
+                          </Chip>
+
+                          <Text style={styles.previewText} numberOfLines={2}>
+                            {note.text || "Sin contenido"}
+                          </Text>
+                        </View>
+                      </Card.Content>
+                    </Card>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      <Portal>
         <Dialog
           visible={deleteDialogVisible}
           onDismiss={handleCloseDeleteDialog}
@@ -427,6 +485,28 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  categoriesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  categoriesTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#344054",
+  },
+
+  clearFilterButton: {
+    margin: 0,
+  },
+
+  clearFilterLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
   categoriesPreview: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -442,6 +522,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+
+  categoryPreviewChipPressed: {
+    opacity: 0.85,
   },
 
   categoryPreviewText: {
@@ -599,72 +683,73 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontSize: 13.5,
   },
+
   noteActions: {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 4,
-},
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
 
-deleteNoteButton: {
-  margin: 0,
-  borderRadius: 14,
-  borderColor: "#F0C7C2",
-},
+  deleteNoteButton: {
+    margin: 0,
+    borderRadius: 14,
+    borderColor: "#F0C7C2",
+  },
 
-deleteDialog: {
-  borderRadius: 24,
-  backgroundColor: "#FFFFFF",
-},
+  deleteDialog: {
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+  },
 
-deleteDialogContent: {
-  alignItems: "center",
-  paddingTop: 24,
-  paddingBottom: 18,
-},
+  deleteDialogContent: {
+    alignItems: "center",
+    paddingTop: 24,
+    paddingBottom: 18,
+  },
 
-deleteIconCircle: {
-  width: 64,
-  height: 64,
-  borderRadius: 32,
-  backgroundColor: "#C62828",
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 14,
-},
+  deleteIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#C62828",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
 
-deleteDialogTitle: {
-  fontWeight: "800",
-  color: "#1F2937",
-  textAlign: "center",
-  marginBottom: 8,
-},
+  deleteDialogTitle: {
+    fontWeight: "800",
+    color: "#1F2937",
+    textAlign: "center",
+    marginBottom: 8,
+  },
 
-deleteDialogText: {
-  color: "#667085",
-  textAlign: "center",
-  lineHeight: 21,
-  marginBottom: 18,
-},
+  deleteDialogText: {
+    color: "#667085",
+    textAlign: "center",
+    lineHeight: 21,
+    marginBottom: 18,
+  },
 
-deleteDialogStrong: {
-  fontWeight: "800",
-  color: "#1F2937",
-},
+  deleteDialogStrong: {
+    fontWeight: "800",
+    color: "#1F2937",
+  },
 
-deleteDialogActions: {
-  width: "100%",
-  flexDirection: "row",
-  gap: 10,
-},
+  deleteDialogActions: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+  },
 
-cancelDeleteButton: {
-  flex: 1,
-  borderRadius: 16,
-  borderColor: "#D0D5DD",
-},
+  cancelDeleteButton: {
+    flex: 1,
+    borderRadius: 16,
+    borderColor: "#D0D5DD",
+  },
 
-confirmDeleteButton: {
-  flex: 1,
-  borderRadius: 16,
-},
+  confirmDeleteButton: {
+    flex: 1,
+    borderRadius: 16,
+  },
 });

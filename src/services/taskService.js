@@ -15,12 +15,14 @@ import { db } from "../firebase/firebase";
 export async function createTask({
   title,
   description,
-  priority,
+  categoryKey,
   createdBy,
   createdByName,
   assignedTo,
   assignedToName,
   dueDate = null,
+  dueDateTimestamp = null,
+  hasDueDate = false,
   order = 0,
 }) {
   const existingTasks = await getDocs(collection(db, "tasks"));
@@ -29,13 +31,15 @@ export async function createTask({
   const docRef = await addDoc(collection(db, "tasks"), {
     title: title.trim(),
     description: description.trim(),
-    priority,
+    categoryKey,
     completed: false,
     createdBy,
     createdByName,
     assignedTo,
     assignedToName,
     dueDate,
+    dueDateTimestamp,
+    hasDueDate,
     order: typeof order === "number" ? order : nextOrder,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

@@ -1,6 +1,13 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { Linking, Pressable, ScrollView, StatusBar, StyleSheet, View } from "react-native";
+import {
+    Linking,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    View,
+} from "react-native";
 import { Card, Text, useTheme } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -80,24 +87,35 @@ const DRIVE_FOLDERS = [
             </Text>
             </View>
 
-            <Card style={styles.infoCard}>
-            <Card.Content style={styles.infoContent}>
-                <View style={styles.infoIconCircle}>
-                <MaterialCommunityIcons
-                    name="google-drive"
-                    size={28}
-                    color={theme.colors.primary}
-                />
-                </View>
+            <View style={styles.infoPanel}>
+            <View style={styles.infoAccent} />
 
-                <View style={styles.infoTextWrap}>
+            <View style={styles.infoIconCircle}>
+                <MaterialCommunityIcons
+                name="google-drive"
+                size={28}
+                color={theme.colors.primary}
+                />
+            </View>
+
+            <View style={styles.infoTextWrap}>
+                <Text style={styles.infoEyebrow}>Acceso rápido</Text>
+
                 <Text style={styles.infoTitle}>Carpetas externas</Text>
+
                 <Text style={styles.infoText}>
-                    Al tocar una opción se abrirá la carpeta correspondiente en Google Drive.
+                Las opciones de abajo abren carpetas específicas de Google Drive
+                fuera de la app.
                 </Text>
-                </View>
-            </Card.Content>
-            </Card>
+            </View>
+            </View>
+
+            <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Carpetas disponibles</Text>
+            <Text style={styles.sectionSubtitle}>
+                Tocá una carpeta para abrirla en Google Drive.
+            </Text>
+            </View>
 
             <View style={styles.foldersList}>
             {DRIVE_FOLDERS.map((folder) => (
@@ -201,30 +219,38 @@ const DRIVE_FOLDERS = [
         maxWidth: 340,
     },
 
-    infoCard: {
-        borderRadius: 22,
-        backgroundColor: "#FFFFFF",
-        borderWidth: 1,
-        borderColor: "#E3ECD9",
-        elevation: 2,
-        marginBottom: 16,
-    },
-
-    infoContent: {
-        paddingHorizontal: 16,
-        paddingVertical: 16,
+    infoPanel: {
+        position: "relative",
+        overflow: "hidden",
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
+        backgroundColor: "rgba(255, 255, 255, 0.68)",
+        borderWidth: 1,
+        borderColor: "rgba(227, 236, 217, 0.85)",
+        borderRadius: 24,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        marginBottom: 18,
+    },
+
+    infoAccent: {
+        position: "absolute",
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 5,
+        backgroundColor: "#4E7A28",
+        opacity: 0.75,
     },
 
     infoIconCircle: {
-        width: 52,
-        height: 52,
-        borderRadius: 20,
+        width: 58,
+        height: 58,
+        borderRadius: 22,
         backgroundColor: "#F6F9F2",
         borderWidth: 1,
-        borderColor: "#E3ECD9",
+        borderColor: "#DDEAD1",
         alignItems: "center",
         justifyContent: "center",
     },
@@ -233,8 +259,17 @@ const DRIVE_FOLDERS = [
         flex: 1,
     },
 
+    infoEyebrow: {
+        fontSize: 11.5,
+        color: "#4E7A28",
+        fontWeight: "800",
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+        marginBottom: 3,
+    },
+
     infoTitle: {
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: "800",
         color: "#1F2937",
         marginBottom: 4,
@@ -244,6 +279,22 @@ const DRIVE_FOLDERS = [
         fontSize: 13,
         color: "#667085",
         lineHeight: 19,
+    },
+
+    sectionHeader: {
+        marginBottom: 12,
+    },
+
+    sectionTitle: {
+        fontSize: 17,
+        fontWeight: "800",
+        color: "#234015",
+        marginBottom: 3,
+    },
+
+    sectionSubtitle: {
+        fontSize: 13,
+        color: "#667085",
     },
 
     foldersList: {
@@ -256,6 +307,7 @@ const DRIVE_FOLDERS = [
 
     folderPressablePressed: {
         opacity: 0.9,
+        transform: [{ scale: 0.995 }],
     },
 
     folderCard: {

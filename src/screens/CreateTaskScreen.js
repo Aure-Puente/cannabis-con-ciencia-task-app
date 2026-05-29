@@ -1,11 +1,9 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -18,25 +16,48 @@ import {
   Card,
   Dialog,
   Portal,
-  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
 } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NOTE_CATEGORIES, getNoteCategoryByKey } from "../constants/noteCategories";
 import { useAuth } from "../context/AuthContext";
 import { createTask } from "../services/taskService";
 import { getAllUsers } from "../services/userService";
 
 //JS:
-export default function CreateTaskScreen({ navigation }) {
+function getDateFromRouteParam(value) {
+  if (!value) return null;
+
+  const [year, month, day] = String(value).split("-");
+  if (!year || !month || !day) return null;
+
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  date.setHours(23, 59, 59, 999);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDateLabel(date) {
+  if (!date) return "Fecha no seleccionada";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(date);
+}
+
+export default function CreateTaskScreen({ navigation, route }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
+  const dueDate = getDateFromRouteParam(route?.params?.selectedDate);
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("media");
   const [saving, setSaving] = useState(false);
 
   const [users, setUsers] = useState([]);
@@ -46,10 +67,12 @@ export default function CreateTaskScreen({ navigation }) {
   const [assignedToName, setAssignedToName] = useState(user?.name || "Yo");
   const [assignDialogVisible, setAssignDialogVisible] = useState(false);
 
+  const [categoryKey, setCategoryKey] = useState(NOTE_CATEGORIES[0].key);
+  const [categoryDialogVisible, setCategoryDialogVisible] = useState(false);
+
   const [successVisible, setSuccessVisible] = useState(false);
 
-  const [dueDate, setDueDate] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const selectedCategory = getNoteCategoryByKey(categoryKey);
 
   useEffect(() => {
     if (user?.uid) {
@@ -108,46 +131,20 @@ export default function CreateTaskScreen({ navigation }) {
     setAssignDialogVisible(false);
   };
 
-  const normalizeDateToEndOfDay = (date) => {
-    const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
-    return d;
-  };
-
-  const handleOpenDatePicker = () => {
-    setShowDatePicker(true);
-  };
-
-  const handleDateChange = (_event, selectedDate) => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(false);
-    }
-
-    if (selectedDate) {
-      const finalDate = normalizeDateToEndOfDay(selectedDate);
-      setDueDate(finalDate);
-    }
-  };
-
-  const handleConfirmIOSDate = () => {
-    setShowDatePicker(false);
-  };
-
-  const handleClearDate = () => {
-    setDueDate(null);
-  };
-
-  const formatDateLabel = (date) => {
-    if (!date) return "Seleccionar fecha";
-
-    return new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(date);
+  const handleSelectCategory = (item) => {
+    setCategoryKey(item.key);
+    setCategoryDialogVisible(false);
   };
 
   const handleCreateTask = async () => {
+    if (!dueDate) {
+      Alert.alert(
+        "Atención",
+        "No se encontró el día seleccionado. Volvé al calendario y elegí una fecha."
+      );
+      return;
+    }
+
     if (!title.trim()) {
       Alert.alert("Atención", "El título es obligatorio.");
       return;
@@ -158,28 +155,32 @@ export default function CreateTaskScreen({ navigation }) {
       return;
     }
 
+    if (!categoryKey) {
+      Alert.alert("Atención", "Elegí una categoría.");
+      return;
+    }
+
     try {
       setSaving(true);
 
       await createTask({
         title: title.trim(),
         description: description.trim(),
-        priority,
+        categoryKey,
         createdBy: user?.uid ? String(user.uid) : "",
-        createdByName: user?.name || "Usuario",
+        createdByName: user?.name || user?.email || "Usuario",
         assignedTo: String(assignedTo),
         assignedToName,
-        dueDate: dueDate ? dueDate.toISOString() : null,
-        dueDateTimestamp: dueDate ? dueDate.getTime() : null,
-        hasDueDate: !!dueDate,
+        dueDate: dueDate.toISOString(),
+        dueDateTimestamp: dueDate.getTime(),
+        hasDueDate: true,
       });
 
       setTitle("");
       setDescription("");
-      setPriority("media");
       setAssignedTo(user?.uid ? String(user.uid) : "");
       setAssignedToName(user?.name || user?.email || "Yo");
-      setDueDate(null);
+      setCategoryKey(NOTE_CATEGORIES[0].key);
 
       setSuccessVisible(true);
     } catch (error) {
@@ -192,15 +193,8 @@ export default function CreateTaskScreen({ navigation }) {
 
   const handleCloseSuccess = () => {
     setSuccessVisible(false);
-    navigation.navigate("Tareas");
+    navigation.goBack();
   };
-
-  const prioritySummary =
-    priority === "baja"
-      ? "Baja prioridad"
-      : priority === "media"
-      ? "Prioridad media"
-      : "Alta prioridad";
 
   return (
     <>
@@ -210,26 +204,41 @@ export default function CreateTaskScreen({ navigation }) {
         <View style={styles.backgroundShapeTop} />
         <View style={styles.backgroundShapeBottom} />
 
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        <KeyboardAvoidingView style={styles.flex}>
           <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingTop: insets.top + 8, paddingBottom: 28 + insets.bottom },
+              { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+
             <View style={styles.headerBlock}>
               <Text variant="headlineMedium" style={styles.title}>
                 Nueva tarea
               </Text>
 
               <Text variant="bodyMedium" style={styles.subtitle}>
-                Creá una tarea nueva y asignala rápidamente al responsable indicado.
+                Creá una tarea para el día seleccionado, asignale responsable y categoría.
               </Text>
+            </View>
+
+            <View style={styles.dateInfoCard}>
+              <View style={styles.dateInfoIcon}>
+                <MaterialCommunityIcons
+                  name="calendar-check-outline"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+
+              <View style={styles.dateInfoTextWrap}>
+                <Text style={styles.dateInfoLabel}>Tarea para el día</Text>
+                <Text style={styles.dateInfoValue}>
+                  {formatDateLabel(dueDate)}
+                </Text>
+              </View>
             </View>
 
             <Card style={styles.card}>
@@ -276,90 +285,55 @@ export default function CreateTaskScreen({ navigation }) {
                   <View style={styles.sectionTitleRow}>
                     <View style={styles.sectionIconWrap}>
                       <MaterialCommunityIcons
-                        name="flag-outline"
+                        name="shape-outline"
                         size={16}
                         color={theme.colors.primary}
                       />
                     </View>
+
                     <Text variant="titleSmall" style={styles.label}>
-                      Prioridad
-                    </Text>
-                  </View>
-
-                  <Text style={styles.sectionHint}>{prioritySummary}</Text>
-                </View>
-
-                <SegmentedButtons
-                  value={priority}
-                  onValueChange={setPriority}
-                  style={styles.segmented}
-                  buttons={[
-                    {
-                      value: "baja",
-                      label: "Baja",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#256C35",
-                      style:
-                        priority === "baja"
-                          ? styles.segmentLow
-                          : styles.segmentDefault,
-                    },
-                    {
-                      value: "media",
-                      label: "Media",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#8A6A10",
-                      style:
-                        priority === "media"
-                          ? styles.segmentMedium
-                          : styles.segmentDefault,
-                    },
-                    {
-                      value: "alta",
-                      label: "Alta",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#7A1F1F",
-                      style:
-                        priority === "alta"
-                          ? styles.segmentHigh
-                          : styles.segmentDefault,
-                    },
-                  ]}
-                />
-
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionTitleRow}>
-                    <View style={styles.sectionIconWrap}>
-                      <MaterialCommunityIcons
-                        name="calendar-month-outline"
-                        size={16}
-                        color={theme.colors.primary}
-                      />
-                    </View>
-                    <Text variant="titleSmall" style={styles.label}>
-                      Fecha límite
+                      Categoría
                     </Text>
                   </View>
 
                   <Text style={styles.sectionHint}>
-                    Podés elegir una fecha para mostrarla luego en el calendario.
+                    El color de la categoría se va a mostrar en el calendario.
                   </Text>
                 </View>
 
-                <Pressable onPress={handleOpenDatePicker} style={styles.assignTrigger}>
-                  <View style={styles.assignLeft}>
-                    <View style={styles.assignAvatar}>
+                <Pressable
+                  onPress={() => setCategoryDialogVisible(true)}
+                  style={({ pressed }) => [
+                    styles.selectorTrigger,
+                    pressed && styles.selectorTriggerPressed,
+                  ]}
+                >
+                  <View style={styles.selectorLeft}>
+                    <View
+                      style={[
+                        styles.selectorAvatar,
+                        {
+                          backgroundColor: selectedCategory.soft,
+                          borderColor: selectedCategory.border,
+                        },
+                      ]}
+                    >
                       <MaterialCommunityIcons
-                        name="calendar-outline"
+                        name={selectedCategory.icon}
                         size={18}
-                        color={theme.colors.primary}
+                        color={selectedCategory.color}
                       />
                     </View>
 
-                    <View style={styles.assignTextWrap}>
-                      <Text style={styles.assignLabel}>Vencimiento</Text>
-                      <Text style={styles.assignValue}>
-                        {dueDate ? formatDateLabel(dueDate) : "Seleccionar fecha"}
+                    <View style={styles.selectorTextWrap}>
+                      <Text style={styles.selectorLabel}>Categoría</Text>
+                      <Text
+                        style={[
+                          styles.selectorValue,
+                          { color: selectedCategory.color },
+                        ]}
+                      >
+                        {selectedCategory.label}
                       </Text>
                     </View>
                   </View>
@@ -373,30 +347,6 @@ export default function CreateTaskScreen({ navigation }) {
                   </View>
                 </Pressable>
 
-                {dueDate ? (
-                  <View style={styles.dateActionsRow}>
-                    <Button
-                      mode="text"
-                      onPress={handleOpenDatePicker}
-                      textColor={theme.colors.primary}
-                      icon="pencil-outline"
-                      compact
-                    >
-                      Cambiar
-                    </Button>
-
-                    <Button
-                      mode="text"
-                      onPress={handleClearDate}
-                      textColor="#B3261E"
-                      icon="close-circle-outline"
-                      compact
-                    >
-                      Quitar
-                    </Button>
-                  </View>
-                ) : null}
-
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionTitleRow}>
                     <View style={styles.sectionIconWrap}>
@@ -406,6 +356,7 @@ export default function CreateTaskScreen({ navigation }) {
                         color={theme.colors.primary}
                       />
                     </View>
+
                     <Text variant="titleSmall" style={styles.label}>
                       Asignar a
                     </Text>
@@ -418,10 +369,10 @@ export default function CreateTaskScreen({ navigation }) {
                       setAssignDialogVisible(true);
                     }
                   }}
-                  style={styles.assignTrigger}
+                  style={styles.selectorTrigger}
                 >
-                  <View style={styles.assignLeft}>
-                    <View style={styles.assignAvatar}>
+                  <View style={styles.selectorLeft}>
+                    <View style={styles.selectorAvatar}>
                       <MaterialCommunityIcons
                         name="account-outline"
                         size={18}
@@ -429,9 +380,9 @@ export default function CreateTaskScreen({ navigation }) {
                       />
                     </View>
 
-                    <View style={styles.assignTextWrap}>
-                      <Text style={styles.assignLabel}>Responsable</Text>
-                      <Text style={styles.assignValue}>
+                    <View style={styles.selectorTextWrap}>
+                      <Text style={styles.selectorLabel}>Responsable</Text>
+                      <Text style={styles.selectorValue}>
                         {usersLoading
                           ? "Cargando usuarios..."
                           : assignedToName || "Seleccionar"}
@@ -459,7 +410,7 @@ export default function CreateTaskScreen({ navigation }) {
                     color="#6B7280"
                   />
                   <Text style={styles.infoText}>
-                    Podés dejarla asignada a vos o seleccionar otra persona del equipo.
+                    Las tareas nacen como pendientes. Luego desde el calendario se pueden marcar como completadas.
                   </Text>
                 </View>
 
@@ -476,48 +427,91 @@ export default function CreateTaskScreen({ navigation }) {
                 >
                   Guardar tarea
                 </Button>
+
+                <Button
+                  mode="text"
+                  onPress={() => navigation.goBack()}
+                  disabled={saving}
+                  textColor="#667085"
+                  style={styles.cancelButton}
+                >
+                  Cancelar
+                </Button>
               </Card.Content>
             </Card>
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
 
-      {showDatePicker && Platform.OS === "android" ? (
-        <DateTimePicker
-          value={dueDate || new Date()}
-          mode="date"
-          display="default"
-          minimumDate={new Date()}
-          onChange={handleDateChange}
-          accentColor="#4E7A28"
-        />
-      ) : null}
-
       <Portal>
         <Dialog
-          visible={showDatePicker && Platform.OS === "ios"}
-          onDismiss={() => setShowDatePicker(false)}
-          style={styles.dateDialog}
+          visible={categoryDialogVisible}
+          onDismiss={() => setCategoryDialogVisible(false)}
+          style={styles.selectDialog}
         >
           <Dialog.Title style={styles.selectDialogTitle}>
-            Seleccionar fecha límite
+            Seleccionar categoría
           </Dialog.Title>
 
-          <Dialog.Content>
-            <DateTimePicker
-              value={dueDate || new Date()}
-              mode="date"
-              display="spinner"
-              minimumDate={new Date()}
-              onChange={handleDateChange}
-              style={styles.iosDatePicker}
-            />
-          </Dialog.Content>
+          <Dialog.ScrollArea style={styles.selectDialogScrollArea}>
+            <ScrollView
+              style={styles.selectScroll}
+              contentContainerStyle={styles.selectScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {NOTE_CATEGORIES.map((item) => {
+                const isSelected = item.key === categoryKey;
 
-          <Dialog.Actions>
-            <Button onPress={() => setShowDatePicker(false)}>Cancelar</Button>
-            <Button onPress={handleConfirmIOSDate}>Aceptar</Button>
-          </Dialog.Actions>
+                return (
+                  <Pressable
+                    key={item.key}
+                    onPress={() => handleSelectCategory(item)}
+                    style={({ pressed }) => [
+                      styles.optionItem,
+                      {
+                        backgroundColor: isSelected ? item.soft : "#FFFFFF",
+                        borderColor: isSelected ? item.border : "#ECEFF3",
+                      },
+                      pressed && styles.optionItemPressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.optionAvatar,
+                        {
+                          backgroundColor: item.soft,
+                          borderColor: item.border,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={item.icon}
+                        size={18}
+                        color={item.color}
+                      />
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.optionName,
+                        isSelected && { color: item.color },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+
+                    {isSelected ? (
+                      <MaterialCommunityIcons
+                        name="check-circle"
+                        size={20}
+                        color={item.color}
+                      />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Dialog.ScrollArea>
         </Dialog>
 
         <Dialog
@@ -544,52 +538,47 @@ export default function CreateTaskScreen({ navigation }) {
                       key={item.uid}
                       onPress={() => handleSelectUser(item)}
                       style={[
-                        styles.userOption,
-                        isSelected && styles.userOptionSelected,
+                        styles.optionItem,
+                        isSelected && styles.optionItemSelected,
                       ]}
                     >
-                      <View style={styles.userOptionLeft}>
-                        <View
-                          style={[
-                            styles.userAvatar,
-                            isSelected && styles.userAvatarSelected,
-                          ]}
-                        >
-                          <MaterialCommunityIcons
-                            name={isSelected ? "check" : "account-outline"}
-                            size={18}
-                            color={isSelected ? "#FFFFFF" : theme.colors.primary}
-                          />
-                        </View>
-
-                        <View style={styles.userTextWrap}>
-                          <Text style={styles.userName}>
-                            {String(item.uid) === String(user?.uid)
-                              ? `${item.name || item.email || "Yo"} (Yo)`
-                              : item.name || item.email || "Usuario"}
-                          </Text>
-
-                          {!!item.email && (
-                            <Text style={styles.userEmail}>{item.email}</Text>
-                          )}
-                        </View>
+                      <View style={styles.optionAvatar}>
+                        <MaterialCommunityIcons
+                          name="account-outline"
+                          size={18}
+                          color={theme.colors.primary}
+                        />
                       </View>
+
+                      <View style={styles.optionTextWrap}>
+                        <Text style={styles.optionName}>
+                          {String(item.uid) === String(user?.uid)
+                            ? `${item.name || "Yo"} (Yo)`
+                            : item.name || item.email || "Usuario"}
+                        </Text>
+
+                        {!!item.email ? (
+                          <Text style={styles.optionEmail}>{item.email}</Text>
+                        ) : null}
+                      </View>
+
+                      {isSelected ? (
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={20}
+                          color={theme.colors.primary}
+                        />
+                      ) : null}
                     </Pressable>
                   );
                 })
               ) : (
-                <View style={styles.emptyUsersBox}>
-                  <Text style={styles.emptyUsersText}>
-                    No hay usuarios disponibles.
-                  </Text>
-                </View>
+                <Text style={styles.emptyDialogText}>
+                  No hay usuarios disponibles.
+                </Text>
               )}
             </ScrollView>
           </Dialog.ScrollArea>
-
-          <Dialog.Actions>
-            <Button onPress={() => setAssignDialogVisible(false)}>Cerrar</Button>
-          </Dialog.Actions>
         </Dialog>
 
         <Dialog
@@ -607,7 +596,7 @@ export default function CreateTaskScreen({ navigation }) {
             </Text>
 
             <Text variant="bodyMedium" style={styles.successText}>
-              La tarea se guardó correctamente y ya está lista para el equipo.
+              La tarea se guardó correctamente en el calendario.
             </Text>
 
             <Button
@@ -661,6 +650,49 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(78, 122, 40, 0.06)",
   },
 
+  dateInfoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 16,
+    elevation: 2,
+  },
+
+  dateInfoIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  dateInfoTextWrap: {
+    flex: 1,
+  },
+
+  dateInfoLabel: {
+    fontSize: 12,
+    color: "#667085",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+
+  dateInfoValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1F2937",
+    textTransform: "capitalize",
+  },
+
   headerBlock: {
     marginBottom: 16,
   },
@@ -674,7 +706,7 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#5E6E57",
     lineHeight: 21,
-    maxWidth: 320,
+    maxWidth: 340,
   },
 
   card: {
@@ -687,13 +719,13 @@ const styles = StyleSheet.create({
 
   cardContent: {
     paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingTop: 20,
     paddingBottom: 18,
   },
 
   input: {
-    marginBottom: 14,
     backgroundColor: "#FFFFFF",
+    marginBottom: 14,
   },
 
   inputOutline: {
@@ -701,16 +733,16 @@ const styles = StyleSheet.create({
   },
 
   inputContent: {
-    paddingVertical: 4,
+    minHeight: 54,
   },
 
   textAreaContent: {
-    minHeight: 92,
-    textAlignVertical: "top",
+    minHeight: 120,
+    paddingTop: 12,
   },
 
   sectionHeader: {
-    marginTop: 4,
+    marginTop: 2,
     marginBottom: 10,
   },
 
@@ -718,6 +750,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginBottom: 5,
   },
 
   sectionIconWrap: {
@@ -725,110 +758,89 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 10,
     backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
     alignItems: "center",
     justifyContent: "center",
   },
 
   label: {
     fontWeight: "800",
-    color: "#1F2937",
+    color: "#344054",
   },
 
   sectionHint: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#6B7280",
+    fontSize: 12.5,
+    color: "#667085",
+    lineHeight: 18,
   },
 
-  segmented: {
-    marginBottom: 18,
-  },
-
-  segmentDefault: {
-    borderColor: "#D8E0CF",
-    backgroundColor: "#FFFFFF",
-  },
-
-  segmentHigh: {
-    backgroundColor: "#C62828",
-    borderColor: "#C62828",
-  },
-
-  segmentMedium: {
-    backgroundColor: "#B7791F",
-    borderColor: "#B7791F",
-  },
-
-  segmentLow: {
-    backgroundColor: "#2E7D32",
-    borderColor: "#2E7D32",
-  },
-
-  assignTrigger: {
-    minHeight: 68,
-    borderRadius: 18,
+  selectorTrigger: {
+    minHeight: 62,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#D7E0CE",
+    borderColor: "#C9D8BF",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
   },
 
-  assignLeft: {
+  selectorTriggerPressed: {
+    opacity: 0.9,
+  },
+
+  selectorLeft: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     flex: 1,
-    gap: 12,
   },
 
-  assignAvatar: {
+  selectorAvatar: {
     width: 40,
     height: 40,
     borderRadius: 14,
     backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  assignTextWrap: {
+  selectorTextWrap: {
     flex: 1,
   },
 
-  assignLabel: {
-    fontSize: 12,
-    color: "#6B7280",
+  selectorLabel: {
+    fontSize: 11.5,
+    color: "#667085",
+    fontWeight: "600",
     marginBottom: 2,
   },
 
-  assignValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
+  selectorValue: {
+    fontSize: 14.5,
+    fontWeight: "800",
+    color: "#344054",
   },
 
   chevronBadge: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: 12,
     backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#ECEFF3",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  dateActionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 14,
-    marginTop: -2,
-  },
-
   infoBox: {
+    width: "100%",
     flexDirection: "row",
     gap: 8,
     alignItems: "flex-start",
@@ -838,7 +850,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 14,
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   infoText: {
@@ -853,7 +865,7 @@ const styles = StyleSheet.create({
   },
 
   saveButtonContent: {
-    height: 52,
+    height: 50,
   },
 
   saveButtonLabel: {
@@ -861,13 +873,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  dateDialog: {
-    borderRadius: 24,
-    backgroundColor: "#FFFFFF",
-  },
-
-  iosDatePicker: {
-    alignSelf: "center",
+  cancelButton: {
+    marginTop: 6,
   },
 
   selectDialog: {
@@ -876,126 +883,119 @@ const styles = StyleSheet.create({
   },
 
   selectDialogTitle: {
-    color: "#234015",
     fontWeight: "800",
+    color: "#1F2937",
   },
 
   selectDialogScrollArea: {
     paddingHorizontal: 0,
-    borderTopWidth: 0,
-    borderBottomWidth: 0,
+    maxHeight: 430,
   },
 
   selectScroll: {
-    maxHeight: 320,
+    maxHeight: 420,
   },
 
   selectScrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    gap: 10,
   },
 
-  userOption: {
-    minHeight: 64,
-    borderRadius: 16,
+  optionItem: {
+    minHeight: 58,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#E7EDE1",
+    borderColor: "#ECEFF3",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 10,
-    justifyContent: "center",
-  },
-
-  userOptionSelected: {
-    borderColor: "#4E7A28",
-    backgroundColor: "#F7FBF3",
-  },
-
-  userOptionLeft: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
   },
 
-  userAvatar: {
+  optionItemPressed: {
+    opacity: 0.9,
+  },
+
+  optionItemSelected: {
+    backgroundColor: "#F6F9F2",
+    borderColor: "#D8E6CD",
+  },
+
+  optionAvatar: {
     width: 38,
     height: 38,
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
     backgroundColor: "#F6F9F2",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  userAvatarSelected: {
-    backgroundColor: "#4E7A28",
-  },
-
-  userTextWrap: {
+  optionTextWrap: {
     flex: 1,
   },
 
-  userName: {
-    fontSize: 14.5,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 2,
+  optionName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#344054",
   },
 
-  userEmail: {
+  optionEmail: {
     fontSize: 12.5,
-    color: "#6B7280",
+    color: "#667085",
+    marginTop: 2,
   },
 
-  emptyUsersBox: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-
-  emptyUsersText: {
-    fontSize: 13,
-    color: "#6B7280",
+  emptyDialogText: {
+    color: "#667085",
+    textAlign: "center",
+    paddingVertical: 20,
   },
 
   successDialog: {
-    borderRadius: 26,
+    borderRadius: 24,
     backgroundColor: "#FFFFFF",
   },
 
   successDialogContent: {
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 24,
+    paddingBottom: 18,
   },
 
   successIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#4E7A28",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
 
   successTitle: {
     fontWeight: "800",
-    color: "#234015",
-    marginBottom: 8,
+    color: "#1F2937",
     textAlign: "center",
+    marginBottom: 8,
   },
 
   successText: {
-    textAlign: "center",
     color: "#667085",
+    textAlign: "center",
     lineHeight: 21,
     marginBottom: 18,
   },
 
   successButton: {
-    borderRadius: 14,
-    alignSelf: "stretch",
-    marginBottom: 15,
+    width: "100%",
+    borderRadius: 16,
   },
 
   successButtonContent: {
