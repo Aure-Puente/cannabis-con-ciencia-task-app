@@ -20,6 +20,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getNoteCategoryByKey, NOTE_CATEGORIES } from "../constants/noteCategories";
 import { useAuth } from "../context/AuthContext";
 import {
+    cancelTaskNotification,
+    syncTaskNotificationsForUser,
+} from "../services/notificationService";
+import {
     deleteTask,
     getAllTasks,
     toggleTaskCompleted,
@@ -290,17 +294,24 @@ LocaleConfig.locales.es = {
 
     const loadTasks = useCallback(async () => {
         try {
-        setLoading(true);
+            setLoading(true);
 
-        const data = await getAllTasks();
-        setTasks(Array.isArray(data) ? data.filter(Boolean) : []);
+            const data = await getAllTasks();
+            const safeTasks = Array.isArray(data) ? data.filter(Boolean) : [];
+
+            setTasks(safeTasks);
+
+            await syncTaskNotificationsForUser({
+            tasks: safeTasks,
+            userId: user?.uid,
+            });
         } catch (error) {
-        console.log("LOAD TASKS CALENDAR ERROR:", error);
-        setTasks([]);
+            console.log("LOAD TASKS CALENDAR ERROR:", error);
+            setTasks([]);
         } finally {
-        setLoading(false);
+            setLoading(false);
         }
-    }, []);
+        }, [user?.uid]);
 
     useFocusEffect(
         useCallback(() => {
@@ -413,15 +424,23 @@ LocaleConfig.locales.es = {
         if (!task?.id) return;
 
         try {
-        setUpdatingTaskId(task.id);
-        await toggleTaskCompleted(task.id, !task.completed);
-        await loadTasks();
+            setUpdatingTaskId(task.id);
+
+            const nextCompletedValue = !task.completed;
+
+            await toggleTaskCompleted(task.id, nextCompletedValue);
+
+            if (nextCompletedValue) {
+            await cancelTaskNotification(task.id);
+            }
+
+            await loadTasks();
         } catch (error) {
-        console.log("TOGGLE TASK CALENDAR ERROR:", error);
+            console.log("TOGGLE TASK CALENDAR ERROR:", error);
         } finally {
-        setUpdatingTaskId(null);
+            setUpdatingTaskId(null);
         }
-    };
+        };
 
     const handleTogglePinned = async (task) => {
         if (!task?.id) return;
@@ -460,6 +479,7 @@ LocaleConfig.locales.es = {
         setDeletingTaskId(taskToDelete.id);
 
         await deleteTask(taskToDelete.id);
+        await cancelTaskNotification(taskToDelete.id);
 
         setTasks((prevTasks) =>
             prevTasks.filter((task) => String(task.id) !== String(taskToDelete.id))
@@ -557,45 +577,45 @@ LocaleConfig.locales.es = {
                 </View>
 
                 <View style={styles.taskTopActions}>
-                <View style={styles.taskActionButtonsRow}>
-                    <IconButton
-                    icon={task.isPinned ? "star" : "star-outline"}
-                    size={19}
-                    mode="contained-tonal"
-                    loading={isPinning}
-                    disabled={isPinning || isDeleting}
-                    iconColor={task.isPinned ? "#B7791F" : "#98A2B3"}
-                    containerColor={
-                        task.isPinned ? "rgba(245,158,11,0.16)" : "#F8FAFC"
-                    }
-                    style={styles.starButton}
-                    onPress={() => handleTogglePinned(task)}
-                    />
-
-                    <IconButton
-                    icon="trash-can-outline"
-                    size={19}
-                    mode="contained-tonal"
-                    loading={isDeleting}
-                    disabled={isDeleting || isPinning}
-                    iconColor="#B42318"
-                    containerColor="rgba(180,35,24,0.08)"
-                    style={styles.deleteButton}
-                    onPress={() => handleAskDeleteTask(task)}
-                    />
-                </View>
-
-                {canReorderSelectedDay ? (
-                    <Pressable onLongPress={drag} delayLongPress={100} hitSlop={8}>
-                    <View style={styles.dragHandle}>
-                        <MaterialCommunityIcons
-                        name="drag"
-                        size={20}
-                        color="#98A2B3"
+                    <View style={styles.taskActionButtonsRow}>
+                        <IconButton
+                        icon={task.isPinned ? "star" : "star-outline"}
+                        size={18}
+                        mode="contained-tonal"
+                        loading={isPinning}
+                        disabled={isPinning || isDeleting}
+                        iconColor={task.isPinned ? "#B7791F" : "#98A2B3"}
+                        containerColor={
+                            task.isPinned ? "rgba(245,158,11,0.16)" : "#F8FAFC"
+                        }
+                        style={styles.starButton}
+                        onPress={() => handleTogglePinned(task)}
                         />
+
+                        <IconButton
+                        icon="trash-can-outline"
+                        size={18}
+                        mode="contained-tonal"
+                        loading={isDeleting}
+                        disabled={isDeleting || isPinning}
+                        iconColor="#B42318"
+                        containerColor="rgba(180,35,24,0.08)"
+                        style={styles.deleteButton}
+                        onPress={() => handleAskDeleteTask(task)}
+                        />
+
+                        {canReorderSelectedDay ? (
+                        <Pressable onLongPress={drag} delayLongPress={100} hitSlop={8}>
+                            <View style={styles.dragHandle}>
+                            <MaterialCommunityIcons
+                                name="drag"
+                                size={20}
+                                color="#98A2B3"
+                            />
+                            </View>
+                        </Pressable>
+                        ) : null}
                     </View>
-                    </Pressable>
-                ) : null}
                 </View>
             </View>
 
@@ -1671,38 +1691,40 @@ LocaleConfig.locales.es = {
     },
 
     taskTopActions: {
-        alignItems: "center",
+        alignItems: "flex-end",
         justifyContent: "flex-start",
-        gap: 2,
-    },
+        },
 
-    taskActionButtonsRow: {
+        taskActionButtonsRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 3,
-    },
+        gap: 2,
+        },
 
-    starButton: {
+        starButton: {
         margin: 0,
-        width: 34,
-        height: 34,
-        borderRadius: 13,
-    },
-
-    deleteButton: {
-        margin: 0,
-        width: 34,
-        height: 34,
-        borderRadius: 13,
-    },
-
-    dragHandle: {
-        width: 34,
-        height: 28,
+        width: 31,
+        height: 31,
         borderRadius: 12,
+        },
+
+        deleteButton: {
+        margin: 0,
+        width: 31,
+        height: 31,
+        borderRadius: 12,
+        },
+
+        dragHandle: {
+        width: 31,
+        height: 31,
+        borderRadius: 12,
+        backgroundColor: "#F8FAFC",
+        borderWidth: 1,
+        borderColor: "#ECEFF3",
         alignItems: "center",
         justifyContent: "center",
-    },
+        },
 
     topTaskChipsRow: {
         flexDirection: "row",
