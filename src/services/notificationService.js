@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 //JS:
 const TASK_NOTIFICATION_CHANNEL_ID = "task-reminders";
 const TASK_NOTIFICATION_PREFIX = "task-reminder:";
+const DAYS_TO_SCHEDULE_AFTER_DUE_DATE = 30;
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -56,25 +57,18 @@ Notifications.setNotificationHandler({
     return null;
     }
 
-    function getTodayStart() {
+    function getStartOfToday() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return today;
     }
 
-    function isTaskDueTodayOrOverdue(task) {
-    const taskDate = getTaskDate(task);
-
-    if (!taskDate) return false;
-
-    const taskDay = new Date(taskDate);
-    taskDay.setHours(0, 0, 0, 0);
-
-    return taskDay.getTime() <= getTodayStart().getTime();
-    }
-
     function getNotificationKey(taskId) {
     return `${TASK_NOTIFICATION_PREFIX}${taskId}`;
+    }
+
+    function getNotificationInstanceKey(taskId, index) {
+    return `${TASK_NOTIFICATION_PREFIX}${taskId}:${index}`;
     }
 
     async function getScheduledTaskNotifications() {
@@ -82,8 +76,11 @@ Notifications.setNotificationHandler({
 
     return scheduled.filter((item) => {
         const taskNotificationKey = item?.content?.data?.taskNotificationKey;
-        return typeof taskNotificationKey === "string" &&
-        taskNotificationKey.startsWith(TASK_NOTIFICATION_PREFIX);
+
+        return (
+        typeof taskNotificationKey === "string" &&
+        taskNotificationKey.startsWith(TASK_NOTIFICATION_PREFIX)
+        );
     });
     }
 
@@ -93,15 +90,16 @@ Notifications.setNotificationHandler({
     const notificationKey = getNotificationKey(taskId);
     const scheduledTaskNotifications = await getScheduledTaskNotifications();
 
-    const notificationToCancel = scheduledTaskNotifications.find(
-        (item) => item?.content?.data?.taskNotificationKey === notificationKey
-    );
+    const notificationsToCancel = scheduledTaskNotifications.filter((item) => {
+        const taskNotificationKey = item?.content?.data?.taskNotificationKey;
+        return String(taskNotificationKey).startsWith(notificationKey);
+    });
 
-    if (notificationToCancel?.identifier) {
-        await Notifications.cancelScheduledNotificationAsync(
-        notificationToCancel.identifier
-        );
-    }
+    await Promise.all(
+        notificationsToCancel.map((notification) =>
+        Notifications.cancelScheduledNotificationAsync(notification.identifier)
+        )
+    );
     }
 
     export async function scheduleTaskNotification(task) {
@@ -110,26 +108,56 @@ Notifications.setNotificationHandler({
     await cancelTaskNotification(task.id);
 
     if (task.completed) return;
-    if (!isTaskDueTodayOrOverdue(task)) return;
 
-    await Notifications.scheduleNotificationAsync({
-        content: {
-        title: "Buen día 🌿 Tenés una tarea pendiente",
-        body: task.title || "Tenés una tarea para hoy",
-        sound: true,
-        data: {
-            taskId: task.id,
-            taskNotificationKey: getNotificationKey(task.id),
-            screen: "Tareas",
-        },
-        },
+    const taskDate = getTaskDate(task);
+    if (!taskDate) return;
+
+    const todayStart = getStartOfToday();
+
+    const firstReminderDate = new Date(taskDate);
+    firstReminderDate.setHours(8, 0, 0, 0);
+
+    if (firstReminderDate.getTime() < Date.now()) {
+        firstReminderDate.setTime(todayStart.getTime());
+        firstReminderDate.setHours(8, 0, 0, 0);
+
+        if (firstReminderDate.getTime() < Date.now()) {
+        firstReminderDate.setDate(firstReminderDate.getDate() + 1);
+        }
+    }
+
+    const notificationsToCreate = [];
+
+    for (let index = 0; index < DAYS_TO_SCHEDULE_AFTER_DUE_DATE; index += 1) {
+        const notificationDate = new Date(firstReminderDate);
+        notificationDate.setDate(firstReminderDate.getDate() + index);
+
+        if (notificationDate.getTime() <= Date.now()) {
+        continue;
+        }
+
+        notificationsToCreate.push(
+        Notifications.scheduleNotificationAsync({
+            content: {
+            title: "Buen día 🌿 Tenés una tarea pendiente",
+            body: task.title || "Tenés una tarea para hoy",
+            sound: true,
+            data: {
+                taskId: task.id,
+                taskNotificationKey: getNotificationInstanceKey(task.id, index),
+                screen: "Tareas",
+            },
+            },
             trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: 10,
-            repeats: false,
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: notificationDate,
             channelId: TASK_NOTIFICATION_CHANNEL_ID,
             },
-    });
+        })
+        );
+    }
+
+    await Promise.all(notificationsToCreate);
     }
 
     export async function syncTaskNotificationsForUser({ tasks = [], userId }) {
@@ -143,7 +171,7 @@ Notifications.setNotificationHandler({
         const isAssignedToMe = String(task?.assignedTo) === String(userId);
         const isPending = !task?.completed;
 
-        return isAssignedToMe && isPending && isTaskDueTodayOrOverdue(task);
+        return isAssignedToMe && isPending;
     });
 
     const validNotificationKeys = userPendingTasks.map((task) =>
@@ -156,13 +184,15 @@ Notifications.setNotificationHandler({
         scheduledTaskNotifications.map(async (notification) => {
         const taskNotificationKey = notification?.content?.data?.taskNotificationKey;
 
-        if (!validNotificationKeys.includes(taskNotificationKey)) {
+        const belongsToValidPendingTask = validNotificationKeys.some((validKey) =>
+            String(taskNotificationKey).startsWith(validKey)
+        );
+
+        if (!belongsToValidPendingTask) {
             await Notifications.cancelScheduledNotificationAsync(notification.identifier);
         }
         })
     );
 
-    await Promise.all(
-        userPendingTasks.map((task) => scheduleTaskNotification(task))
-    );
+    await Promise.all(userPendingTasks.map((task) => scheduleTaskNotification(task)));
 }
