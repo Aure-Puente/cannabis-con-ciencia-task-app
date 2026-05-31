@@ -17,10 +17,10 @@ const DRIVE_FOLDERS = [
         id: "produccion",
         title: "Producción",
         description: "Accedé a la carpeta de producción del equipo.",
-        icon: "factory",
-        color: "#B7791F",
-        soft: "rgba(183, 121, 31, 0.12)",
-        border: "rgba(183, 121, 31, 0.24)",
+        icon: "sprout",
+        color: "#16A34A",
+        soft: "rgba(22, 163, 74, 0.12)",
+        border: "rgba(22, 163, 74, 0.24)",
         url: "https://drive.google.com/drive/folders/1tvQv4bstuOGmDYQk2g-3wrHx_LyiebrF",
     },
     {
@@ -28,9 +28,9 @@ const DRIVE_FOLDERS = [
         title: "Redes",
         description: "Materiales, archivos y recursos relacionados a redes.",
         icon: "access-point-network",
-        color: "#2563EB",
-        soft: "rgba(37, 99, 235, 0.12)",
-        border: "rgba(37, 99, 235, 0.22)",
+        color: "#7C3AED",
+        soft: "rgba(124, 58, 237, 0.12)",
+        border: "rgba(124, 58, 237, 0.22)",
         url: "https://drive.google.com/drive/folders/16WRUGZIk1QyK60nvJw2oHyH1uNjQcL5n",
     },
     {
@@ -38,141 +38,141 @@ const DRIVE_FOLDERS = [
         title: "General",
         description: "Carpeta general con documentos compartidos.",
         icon: "folder-google-drive",
-        color: "#4E7A28",
-        soft: "rgba(78, 122, 40, 0.12)",
-        border: "rgba(78, 122, 40, 0.22)",
+        color: "#2563EB",
+        soft: "rgba(37, 99, 235, 0.12)",
+        border: "rgba(37, 99, 235, 0.22)",
         url: "https://drive.google.com/drive/folders/1N0EH_ypn7tI3sdduSBG863Su_lRDAprE",
     },
-    ];
+];
 
-    export default function DriveScreen() {
+export default function DriveScreen() {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
 
     const handleOpenFolder = async (url) => {
         try {
-        const supported = await Linking.canOpenURL(url);
+            const supported = await Linking.canOpenURL(url);
 
-        if (supported) {
-            await Linking.openURL(url);
-        } else {
-            console.log("No se puede abrir la URL:", url);
-        }
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                console.log("No se puede abrir la URL:", url);
+            }
         } catch (error) {
-        console.log("OPEN DRIVE URL ERROR:", error);
+            console.log("OPEN DRIVE URL ERROR:", error);
         }
     };
 
     return (
         <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F4F8F1" />
+            <StatusBar barStyle="dark-content" backgroundColor="#F4F8F1" />
 
-        <View style={styles.backgroundShapeTop} />
-        <View style={styles.backgroundShapeBottom} />
+            <View style={styles.backgroundShapeTop} />
+            <View style={styles.backgroundShapeBottom} />
 
-        <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: 130 + insets.bottom },
-            ]}
-        >
-            <View style={styles.headerBlock}>
-            <Text variant="headlineMedium" style={styles.title}>
-                Drive
-            </Text>
-
-            <Text variant="bodyMedium" style={styles.subtitle}>
-                Accedé rápidamente a las carpetas compartidas del equipo.
-            </Text>
-            </View>
-
-            <View style={styles.infoPanel}>
-            <View style={styles.infoAccent} />
-
-            <View style={styles.infoIconCircle}>
-                <MaterialCommunityIcons
-                name="google-drive"
-                size={28}
-                color={theme.colors.primary}
-                />
-            </View>
-
-            <View style={styles.infoTextWrap}>
-                <Text style={styles.infoEyebrow}>Acceso rápido</Text>
-
-                <Text style={styles.infoTitle}>Carpetas externas</Text>
-
-                <Text style={styles.infoText}>
-                Las opciones de abajo abren carpetas específicas de Google Drive
-                fuera de la app.
-                </Text>
-            </View>
-            </View>
-
-            <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Carpetas disponibles</Text>
-            <Text style={styles.sectionSubtitle}>
-                Tocá una carpeta para abrirla en Google Drive.
-            </Text>
-            </View>
-
-            <View style={styles.foldersList}>
-            {DRIVE_FOLDERS.map((folder) => (
-                <Pressable
-                key={folder.id}
-                onPress={() => handleOpenFolder(folder.url)}
-                style={({ pressed }) => [
-                    styles.folderPressable,
-                    pressed && styles.folderPressablePressed,
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: 130 + insets.bottom },
                 ]}
-                >
-                <Card style={styles.folderCard}>
-                    <Card.Content style={styles.folderContent}>
-                    <View
-                        style={[
-                        styles.folderIconWrap,
-                        {
-                            backgroundColor: folder.soft,
-                            borderColor: folder.border,
-                        },
-                        ]}
-                    >
+            >
+                <View style={styles.headerBlock}>
+                    <Text variant="headlineMedium" style={styles.title}>
+                        Drive
+                    </Text>
+
+                    <Text variant="bodyMedium" style={styles.subtitle}>
+                        Accedé rápidamente a las carpetas compartidas del equipo.
+                    </Text>
+                </View>
+
+                <View style={styles.infoPanel}>
+                    <View style={styles.infoAccent} />
+
+                    <View style={styles.infoIconCircle}>
                         <MaterialCommunityIcons
-                        name={folder.icon}
-                        size={24}
-                        color={folder.color}
+                            name="google-drive"
+                            size={28}
+                            color={theme.colors.primary}
                         />
                     </View>
 
-                    <View style={styles.folderTextWrap}>
-                        <Text variant="titleMedium" style={styles.folderTitle}>
-                        {folder.title}
-                        </Text>
+                    <View style={styles.infoTextWrap}>
+                        <Text style={styles.infoEyebrow}>Acceso rápido</Text>
 
-                        <Text style={styles.folderDescription}>
-                        {folder.description}
+                        <Text style={styles.infoTitle}>Carpetas externas</Text>
+
+                        <Text style={styles.infoText}>
+                            Las opciones de abajo abren carpetas específicas de Google Drive
+                            fuera de la app.
                         </Text>
                     </View>
+                </View>
 
-                    <View style={styles.openIconWrap}>
-                        <MaterialCommunityIcons
-                        name="open-in-new"
-                        size={21}
-                        color="#667085"
-                        />
-                    </View>
-                    </Card.Content>
-                </Card>
-                </Pressable>
-            ))}
-            </View>
-        </ScrollView>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Carpetas disponibles</Text>
+                    <Text style={styles.sectionSubtitle}>
+                        Tocá una carpeta para abrirla en Google Drive.
+                    </Text>
+                </View>
+
+                <View style={styles.foldersList}>
+                    {DRIVE_FOLDERS.map((folder) => (
+                        <Pressable
+                            key={folder.id}
+                            onPress={() => handleOpenFolder(folder.url)}
+                            style={({ pressed }) => [
+                                styles.folderPressable,
+                                pressed && styles.folderPressablePressed,
+                            ]}
+                        >
+                            <Card style={styles.folderCard}>
+                                <Card.Content style={styles.folderContent}>
+                                    <View
+                                        style={[
+                                            styles.folderIconWrap,
+                                            {
+                                                backgroundColor: folder.soft,
+                                                borderColor: folder.border,
+                                            },
+                                        ]}
+                                    >
+                                        <MaterialCommunityIcons
+                                            name={folder.icon}
+                                            size={24}
+                                            color={folder.color}
+                                        />
+                                    </View>
+
+                                    <View style={styles.folderTextWrap}>
+                                        <Text variant="titleMedium" style={styles.folderTitle}>
+                                            {folder.title}
+                                        </Text>
+
+                                        <Text style={styles.folderDescription}>
+                                            {folder.description}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.openIconWrap}>
+                                        <MaterialCommunityIcons
+                                            name="open-in-new"
+                                            size={21}
+                                            color="#667085"
+                                        />
+                                    </View>
+                                </Card.Content>
+                            </Card>
+                        </Pressable>
+                    ))}
+                </View>
+            </ScrollView>
         </View>
     );
-    }
+}
 
-    const styles = StyleSheet.create({
+const styles = StyleSheet.create({
     screen: {
         flex: 1,
         backgroundColor: "#F4F8F1",
