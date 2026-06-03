@@ -16,10 +16,12 @@ export async function createTask({
   title,
   description,
   categoryKey,
+  categoryLabel = "",
   createdBy,
   createdByName,
   assignedTo,
   assignedToName,
+  assignedUsers = [],
   dueDate = null,
   dueDateTimestamp = null,
   hasDueDate = false,
@@ -28,19 +30,50 @@ export async function createTask({
   const existingTasks = await getDocs(collection(db, "tasks"));
   const nextOrder = existingTasks.size;
 
+  const safeAssignedUsers = Array.isArray(assignedUsers)
+    ? assignedUsers
+        .map((item) => ({
+          uid: String(item?.uid || item?.id || ""),
+          name: item?.name || item?.nombre || item?.email || "Usuario",
+          email: item?.email || "",
+        }))
+        .filter((item) => item.uid)
+    : [];
+
+  const fallbackAssignedUser =
+    safeAssignedUsers.length > 0
+      ? safeAssignedUsers[0]
+      : {
+          uid: String(assignedTo || ""),
+          name: assignedToName || "Usuario",
+          email: "",
+        };
+
   const docRef = await addDoc(collection(db, "tasks"), {
     title: title.trim(),
     description: description.trim(),
+
     categoryKey,
+    categoryLabel,
+
     completed: false,
+
     createdBy,
     createdByName,
-    assignedTo,
-    assignedToName,
+
+    // Campos viejos para compatibilidad:
+    assignedTo: String(fallbackAssignedUser.uid || ""),
+    assignedToName: fallbackAssignedUser.name || "Usuario",
+
+    // Campo nuevo para múltiples responsables:
+    assignedUsers: safeAssignedUsers.length > 0 ? safeAssignedUsers : [fallbackAssignedUser],
+
     dueDate,
     dueDateTimestamp,
     hasDueDate,
+
     order: typeof order === "number" ? order : nextOrder,
+
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

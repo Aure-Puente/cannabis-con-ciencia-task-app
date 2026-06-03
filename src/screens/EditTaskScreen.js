@@ -1,5 +1,6 @@
 //Importaciones:
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -16,40 +17,149 @@ import {
   Button,
   Card,
   Dialog,
-  Menu,
   Portal,
-  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
 } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NOTE_CATEGORIES, getNoteCategoryByKey } from "../constants/noteCategories";
 import { useAuth } from "../context/AuthContext";
 import { updateTask } from "../services/taskService";
 import { getAllUsers } from "../services/userService";
 
 //JS:
+function getTaskDueDate(task) {
+  if (task?.dueDateTimestamp) {
+    const date = new Date(task.dueDateTimestamp);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (task?.dueDate) {
+    const date = new Date(task.dueDate);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function normalizeEndOfDay(date) {
+  if (!date) return null;
+
+  const safeDate = new Date(date);
+  safeDate.setHours(23, 59, 59, 999);
+
+  return Number.isNaN(safeDate.getTime()) ? null : safeDate;
+}
+
+function formatDateLabel(date) {
+  if (!date) return "Fecha no seleccionada";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  }).format(date);
+}
+
+function getUserLabel(userItem) {
+  return userItem?.name || userItem?.email || "Usuario";
+}
+
+function getInitial(name) {
+  const safeName = String(name || "").trim();
+  return safeName ? safeName.charAt(0).toUpperCase() : "?";
+}
+
+function normalizeTaskResponsible(item) {
+  if (!item) return null;
+
+  if (typeof item === "string") {
+    return {
+      uid: String(item),
+      name: "Usuario",
+      email: "",
+    };
+  }
+
+  const uid = String(item?.uid || item?.id || item?.userId || "");
+  if (!uid) return null;
+
+  return {
+    uid,
+    name: item?.name || item?.nombre || item?.displayName || item?.email || "Usuario",
+    email: item?.email || "",
+  };
+}
+
+function getInitialSelectedUsersFromTask(task, currentUser) {
+  if (Array.isArray(task?.assignedUsers) && task.assignedUsers.length > 0) {
+    return task.assignedUsers.map(normalizeTaskResponsible).filter(Boolean);
+  }
+
+  if (Array.isArray(task?.assignedToUsers) && task.assignedToUsers.length > 0) {
+    return task.assignedToUsers.map(normalizeTaskResponsible).filter(Boolean);
+  }
+
+  if (Array.isArray(task?.responsables) && task.responsables.length > 0) {
+    return task.responsables.map(normalizeTaskResponsible).filter(Boolean);
+  }
+
+  if (task?.assignedTo) {
+    return [
+      {
+        uid: String(task.assignedTo),
+        name: task?.assignedToName || "Usuario",
+        email: "",
+      },
+    ];
+  }
+
+  if (currentUser?.uid) {
+    return [
+      {
+        uid: String(currentUser.uid),
+        name: currentUser?.name || "Yo",
+        email: currentUser?.email || "",
+      },
+    ];
+  }
+
+  return [];
+}
+
 export default function EditTaskScreen({ navigation, route }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+
   const task = route?.params?.task;
+
+  const initialDueDate = normalizeEndOfDay(getTaskDueDate(task)) || normalizeEndOfDay(new Date());
+  const initialCategory = getNoteCategoryByKey(task?.categoryKey);
 
   const [title, setTitle] = useState(task?.title || "");
   const [description, setDescription] = useState(task?.description || "");
-  const [priority, setPriority] = useState(task?.priority || "media");
+  const [dueDate, setDueDate] = useState(initialDueDate);
   const [saving, setSaving] = useState(false);
 
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
-  const [assignedTo, setAssignedTo] = useState(task?.assignedTo || user?.uid || "");
-  const [assignedToName, setAssignedToName] = useState(
-    task?.assignedToName || user?.name || "Yo"
+  const [selectedUsers, setSelectedUsers] = useState(() =>
+    getInitialSelectedUsersFromTask(task, user)
   );
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [assignDialogVisible, setAssignDialogVisible] = useState(false);
 
+  const [categoryKey, setCategoryKey] = useState(
+    task?.categoryKey || initialCategory?.key || NOTE_CATEGORIES[0]?.key
+  );
+  const [categoryDialogVisible, setCategoryDialogVisible] = useState(false);
+
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
+
+  const selectedCategory = getNoteCategoryByKey(categoryKey);
 
   useEffect(() => {
     loadUsers();
@@ -58,8 +168,11 @@ export default function EditTaskScreen({ navigation, route }) {
   const loadUsers = async () => {
     try {
       setUsersLoading(true);
+
       const data = await getAllUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      const safeUsers = Array.isArray(data) ? data : [];
+
+      setUsers(safeUsers);
     } catch (error) {
       console.log("LOAD USERS ERROR:", error);
       setUsers([]);
@@ -69,25 +182,82 @@ export default function EditTaskScreen({ navigation, route }) {
   };
 
   const selectableUsers = useMemo(() => {
-    const selfUser = {
-      uid: user?.uid,
-      name: user?.name || "Yo",
-      email: user?.email || "",
-    };
+    const normalizedDbUsers = (users || [])
+      .map((item) => ({
+        uid: String(item?.uid || item?.id || ""),
+        name: item?.name || item?.nombre || "",
+        email: item?.email || "",
+      }))
+      .filter((item) => item.uid);
 
-    const merged = [selfUser, ...(users || [])];
+    const selfUser = user?.uid
+      ? {
+          uid: String(user.uid),
+          name: user?.name || "Yo",
+          email: user?.email || "",
+        }
+      : null;
+
+    const merged = selfUser ? [selfUser, ...normalizedDbUsers] : normalizedDbUsers;
 
     return merged.filter(
       (item, index, arr) =>
         item?.uid &&
-        arr.findIndex((u) => u?.uid === item.uid) === index
+        arr.findIndex((u) => String(u?.uid) === String(item.uid)) === index
     );
-  }, [users, user?.uid, user?.name, user?.email]);
+  }, [users, user]);
 
-  const handleSelectUser = (selectedUser) => {
-    setAssignedTo(selectedUser.uid);
-    setAssignedToName(selectedUser.name || selectedUser.email || "Usuario");
-    setMenuVisible(false);
+  const selectedUsersText = useMemo(() => {
+    if (usersLoading) return "Cargando usuarios...";
+    if (selectedUsers.length === 0) return "Seleccionar responsables";
+
+    if (selectedUsers.length === 1) {
+      return getUserLabel(selectedUsers[0]);
+    }
+
+    return `${selectedUsers.length} responsables seleccionados`;
+  }, [selectedUsers, usersLoading]);
+
+  const handleToggleUser = (selectedUser) => {
+    setSelectedUsers((prev) => {
+      const exists = prev.some(
+        (item) => String(item.uid) === String(selectedUser.uid)
+      );
+
+      if (exists) {
+        return prev.filter(
+          (item) => String(item.uid) !== String(selectedUser.uid)
+        );
+      }
+
+      return [
+        ...prev,
+        {
+          uid: String(selectedUser.uid),
+          name: selectedUser.name || selectedUser.email || "Usuario",
+          email: selectedUser.email || "",
+        },
+      ];
+    });
+  };
+
+  const handleSelectCategory = (item) => {
+    setCategoryKey(item.key);
+    setCategoryDialogVisible(false);
+  };
+
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === "android") {
+      setDatePickerVisible(false);
+    }
+
+    if (event?.type === "dismissed") {
+      return;
+    }
+
+    if (selectedDate) {
+      setDueDate(normalizeEndOfDay(selectedDate));
+    }
   };
 
   const handleSave = async () => {
@@ -96,25 +266,53 @@ export default function EditTaskScreen({ navigation, route }) {
       return;
     }
 
+    if (!dueDate) {
+      Alert.alert("Atención", "Elegí una fecha para la tarea.");
+      return;
+    }
+
     if (!title.trim()) {
       Alert.alert("Atención", "El título es obligatorio.");
       return;
     }
 
-    if (!assignedTo) {
-      Alert.alert("Atención", "Elegí a quién asignar la tarea.");
+    if (selectedUsers.length === 0) {
+      Alert.alert("Atención", "Elegí al menos un responsable.");
+      return;
+    }
+
+    if (!categoryKey) {
+      Alert.alert("Atención", "Elegí una categoría.");
       return;
     }
 
     try {
       setSaving(true);
 
+      const category = getNoteCategoryByKey(categoryKey);
+      const normalizedDate = normalizeEndOfDay(dueDate);
+      const firstAssignedUser = selectedUsers[0];
+
       await updateTask(task.id, {
         title: title.trim(),
         description: description.trim(),
-        priority,
-        assignedTo,
-        assignedToName,
+        categoryKey,
+        categoryLabel: category.label,
+
+        // Campos viejos para compatibilidad:
+        assignedTo: String(firstAssignedUser.uid),
+        assignedToName: getUserLabel(firstAssignedUser),
+
+        // Campo nuevo para múltiples responsables:
+        assignedUsers: selectedUsers.map((item) => ({
+          uid: String(item.uid),
+          name: item.name || item.email || "Usuario",
+          email: item.email || "",
+        })),
+
+        dueDate: normalizedDate.toISOString(),
+        dueDateTimestamp: normalizedDate.getTime(),
+        hasDueDate: true,
       });
 
       setSuccessVisible(true);
@@ -131,13 +329,6 @@ export default function EditTaskScreen({ navigation, route }) {
     navigation.goBack();
   };
 
-  const prioritySummary =
-    priority === "alta"
-      ? "Alta prioridad"
-      : priority === "media"
-      ? "Prioridad media"
-      : "Baja prioridad";
-
   return (
     <>
       <View style={styles.screen}>
@@ -153,7 +344,7 @@ export default function EditTaskScreen({ navigation, route }) {
           <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingTop: insets.top + 8, paddingBottom: 28 + insets.bottom },
+              { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -164,9 +355,63 @@ export default function EditTaskScreen({ navigation, route }) {
               </Text>
 
               <Text variant="bodyMedium" style={styles.subtitle}>
-                Actualizá la información de la tarea y dejala lista para el equipo.
+                Actualizá la tarea, cambiá el día, responsables o categoría.
               </Text>
             </View>
+
+            <Pressable
+              onPress={() => setDatePickerVisible(true)}
+              style={({ pressed }) => [
+                styles.dateInfoCard,
+                pressed && styles.dateInfoCardPressed,
+              ]}
+            >
+              <View style={styles.dateInfoIcon}>
+                <MaterialCommunityIcons
+                  name="calendar-edit"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </View>
+
+              <View style={styles.dateInfoTextWrap}>
+                <Text style={styles.dateInfoLabel}>Tarea para el día</Text>
+                <Text style={styles.dateInfoValue}>
+                  {formatDateLabel(dueDate)}
+                </Text>
+              </View>
+
+              <View style={styles.chevronBadge}>
+                <MaterialCommunityIcons
+                  name="pencil-outline"
+                  size={18}
+                  color="#6B7280"
+                />
+              </View>
+            </Pressable>
+
+            {datePickerVisible ? (
+              <View style={Platform.OS === "ios" ? styles.iosDatePickerBox : null}>
+                <DateTimePicker
+                  value={dueDate || new Date()}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={handleDateChange}
+                  locale="es-AR"
+                />
+
+                {Platform.OS === "ios" ? (
+                  <Button
+                    mode="contained"
+                    onPress={() => setDatePickerVisible(false)}
+                    style={styles.iosDateButton}
+                    buttonColor={theme.colors.primary}
+                  >
+                    Confirmar fecha
+                  </Button>
+                ) : null}
+              </View>
+            ) : null}
 
             <Card style={styles.card}>
               <Card.Content style={styles.cardContent}>
@@ -212,116 +457,158 @@ export default function EditTaskScreen({ navigation, route }) {
                   <View style={styles.sectionTitleRow}>
                     <View style={styles.sectionIconWrap}>
                       <MaterialCommunityIcons
-                        name="flag-outline"
+                        name="shape-outline"
                         size={16}
                         color={theme.colors.primary}
                       />
                     </View>
+
                     <Text variant="titleSmall" style={styles.label}>
-                      Prioridad
+                      Categoría
                     </Text>
                   </View>
 
-                  <Text style={styles.sectionHint}>{prioritySummary}</Text>
+                  <Text style={styles.sectionHint}>
+                    El color de la categoría se va a mostrar en el calendario.
+                  </Text>
                 </View>
 
-                <SegmentedButtons
-                  value={priority}
-                  onValueChange={setPriority}
-                  style={styles.segmented}
-                  buttons={[
-                    {
-                      value: "alta",
-                      label: "Alta",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#7A1F1F",
-                      style: priority === "alta" ? styles.segmentHigh : styles.segmentDefault,
-                    },
-                    {
-                      value: "media",
-                      label: "Media",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#8A6A10",
-                      style: priority === "media" ? styles.segmentMedium : styles.segmentDefault,
-                    },
-                    {
-                      value: "baja",
-                      label: "Baja",
-                      checkedColor: "#FFFFFF",
-                      uncheckedColor: "#256C35",
-                      style: priority === "baja" ? styles.segmentLow : styles.segmentDefault,
-                    },
+                <Pressable
+                  onPress={() => setCategoryDialogVisible(true)}
+                  style={({ pressed }) => [
+                    styles.selectorTrigger,
+                    pressed && styles.selectorTriggerPressed,
                   ]}
-                />
+                >
+                  <View style={styles.selectorLeft}>
+                    <View
+                      style={[
+                        styles.selectorAvatar,
+                        {
+                          backgroundColor: selectedCategory.soft,
+                          borderColor: selectedCategory.border,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={selectedCategory.icon}
+                        size={18}
+                        color={selectedCategory.color}
+                      />
+                    </View>
+
+                    <View style={styles.selectorTextWrap}>
+                      <Text style={styles.selectorLabel}>Categoría</Text>
+                      <Text
+                        style={[
+                          styles.selectorValue,
+                          { color: selectedCategory.color },
+                        ]}
+                      >
+                        {selectedCategory.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chevronBadge}>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#6B7280"
+                    />
+                  </View>
+                </Pressable>
 
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionTitleRow}>
                     <View style={styles.sectionIconWrap}>
                       <MaterialCommunityIcons
-                        name="account-check-outline"
+                        name="account-multiple-check-outline"
                         size={16}
                         color={theme.colors.primary}
                       />
                     </View>
+
                     <Text variant="titleSmall" style={styles.label}>
-                      Asignar a
+                      Responsables
                     </Text>
                   </View>
+
+                  <Text style={styles.sectionHint}>
+                    Podés seleccionar una o varias personas para esta tarea.
+                  </Text>
                 </View>
 
-                <Menu
-                  visible={menuVisible}
-                  onDismiss={() => setMenuVisible(false)}
-                  anchorPosition="bottom"
-                  contentStyle={styles.menuContent}
-                  anchor={
-                    <Pressable onPress={() => setMenuVisible(true)} style={styles.assignTrigger}>
-                      <View style={styles.assignLeft}>
-                        <View style={styles.assignAvatar}>
-                          <MaterialCommunityIcons
-                            name="account-outline"
-                            size={18}
-                            color={theme.colors.primary}
-                          />
-                        </View>
+                <Pressable
+                  onPress={() => {
+                    if (!usersLoading) {
+                      setAssignDialogVisible(true);
+                    }
+                  }}
+                  style={({ pressed }) => [
+                    styles.selectorTrigger,
+                    pressed && styles.selectorTriggerPressed,
+                  ]}
+                >
+                  <View style={styles.selectorLeft}>
+                    <View style={styles.selectorAvatar}>
+                      <MaterialCommunityIcons
+                        name="account-multiple-outline"
+                        size={18}
+                        color={theme.colors.primary}
+                      />
+                    </View>
 
-                        <View style={styles.assignTextWrap}>
-                          <Text style={styles.assignLabel}>Responsable</Text>
-                          <Text style={styles.assignValue}>
-                            {usersLoading ? "Cargando usuarios..." : assignedToName || "Seleccionar"}
+                    <View style={styles.selectorTextWrap}>
+                      <Text style={styles.selectorLabel}>Responsables</Text>
+                      <Text style={styles.selectorValue}>
+                        {selectedUsersText}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.chevronBadge}>
+                    {usersLoading ? (
+                      <ActivityIndicator size={16} color={theme.colors.primary} />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="chevron-right"
+                        size={20}
+                        color="#6B7280"
+                      />
+                    )}
+                  </View>
+                </Pressable>
+
+                {selectedUsers.length > 0 ? (
+                  <View style={styles.selectedUsersWrap}>
+                    {selectedUsers.map((item) => (
+                      <View key={item.uid} style={styles.selectedUserChip}>
+                        <View style={styles.selectedUserInitial}>
+                          <Text style={styles.selectedUserInitialText}>
+                            {getInitial(getUserLabel(item))}
                           </Text>
                         </View>
-                      </View>
 
-                      <View style={styles.chevronBadge}>
-                        {usersLoading ? (
-                          <ActivityIndicator size={16} color={theme.colors.primary} />
-                        ) : (
+                        <Text style={styles.selectedUserName} numberOfLines={1}>
+                          {getUserLabel(item)}
+                        </Text>
+
+                        <Pressable
+                          onPress={() => handleToggleUser(item)}
+                          hitSlop={8}
+                          style={styles.removeSelectedUserButton}
+                        >
                           <MaterialCommunityIcons
-                            name="chevron-down"
-                            size={20}
-                            color="#6B7280"
+                            name="close"
+                            size={14}
+                            color="#667085"
                           />
-                        )}
+                        </Pressable>
                       </View>
-                    </Pressable>
-                  }
-                >
-                  {selectableUsers.map((item) => (
-                    <Menu.Item
-                      key={item.uid}
-                      onPress={() => handleSelectUser(item)}
-                      title={
-                        item.uid === user?.uid
-                          ? `${item.name || "Yo"} (Yo)`
-                          : item.name || item.email || "Usuario"
-                      }
-                      leadingIcon={
-                        item.uid === assignedTo ? "check-circle" : "account-outline"
-                      }
-                    />
-                  ))}
-                </Menu>
+                    ))}
+                  </View>
+                ) : null}
 
                 <View style={styles.infoBox}>
                   <MaterialCommunityIcons
@@ -329,8 +616,9 @@ export default function EditTaskScreen({ navigation, route }) {
                     size={16}
                     color="#6B7280"
                   />
+
                   <Text style={styles.infoText}>
-                    Revisá bien el responsable y la prioridad antes de guardar los cambios.
+                    Si cambiás responsables o fecha, las notificaciones se sincronizan cuando cada usuario abra la app.
                   </Text>
                 </View>
 
@@ -347,6 +635,16 @@ export default function EditTaskScreen({ navigation, route }) {
                 >
                   Guardar cambios
                 </Button>
+
+                <Button
+                  mode="text"
+                  onPress={() => navigation.goBack()}
+                  disabled={saving}
+                  textColor="#667085"
+                  style={styles.cancelButton}
+                >
+                  Cancelar
+                </Button>
               </Card.Content>
             </Card>
           </ScrollView>
@@ -354,7 +652,172 @@ export default function EditTaskScreen({ navigation, route }) {
       </View>
 
       <Portal>
-        <Dialog visible={successVisible} onDismiss={handleCloseSuccess} style={styles.successDialog}>
+        <Dialog
+          visible={categoryDialogVisible}
+          onDismiss={() => setCategoryDialogVisible(false)}
+          style={styles.selectDialog}
+        >
+          <Dialog.Title style={styles.selectDialogTitle}>
+            Seleccionar categoría
+          </Dialog.Title>
+
+          <Dialog.ScrollArea style={styles.selectDialogScrollArea}>
+            <ScrollView
+              style={styles.selectScroll}
+              contentContainerStyle={styles.selectScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {NOTE_CATEGORIES.map((item) => {
+                const isSelected = item.key === categoryKey;
+
+                return (
+                  <Pressable
+                    key={item.key}
+                    onPress={() => handleSelectCategory(item)}
+                    style={({ pressed }) => [
+                      styles.optionItem,
+                      {
+                        backgroundColor: isSelected ? item.soft : "#FFFFFF",
+                        borderColor: isSelected ? item.border : "#ECEFF3",
+                      },
+                      pressed && styles.optionItemPressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.optionAvatar,
+                        {
+                          backgroundColor: item.soft,
+                          borderColor: item.border,
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={item.icon}
+                        size={18}
+                        color={item.color}
+                      />
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.optionName,
+                        isSelected && { color: item.color },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+
+                    {isSelected ? (
+                      <MaterialCommunityIcons
+                        name="check-circle"
+                        size={20}
+                        color={item.color}
+                      />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Dialog.ScrollArea>
+        </Dialog>
+
+        <Dialog
+          visible={assignDialogVisible}
+          onDismiss={() => setAssignDialogVisible(false)}
+          style={styles.selectDialog}
+        >
+          <Dialog.Title style={styles.selectDialogTitle}>
+            Seleccionar responsables
+          </Dialog.Title>
+
+          <Dialog.ScrollArea style={styles.selectDialogScrollArea}>
+            <ScrollView
+              style={styles.selectScroll}
+              contentContainerStyle={styles.selectScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectableUsers.length > 0 ? (
+                selectableUsers.map((item) => {
+                  const isSelected = selectedUsers.some(
+                    (selectedUser) =>
+                      String(selectedUser.uid) === String(item.uid)
+                  );
+
+                  return (
+                    <Pressable
+                      key={item.uid}
+                      onPress={() => handleToggleUser(item)}
+                      style={({ pressed }) => [
+                        styles.optionItem,
+                        isSelected && styles.optionItemSelected,
+                        pressed && styles.optionItemPressed,
+                      ]}
+                    >
+                      <View style={styles.optionAvatar}>
+                        <MaterialCommunityIcons
+                          name={isSelected ? "account-check-outline" : "account-outline"}
+                          size={18}
+                          color={theme.colors.primary}
+                        />
+                      </View>
+
+                      <View style={styles.optionTextWrap}>
+                        <Text style={styles.optionName}>
+                          {String(item.uid) === String(user?.uid)
+                            ? `${item.name || "Yo"} (Yo)`
+                            : item.name || item.email || "Usuario"}
+                        </Text>
+
+                        {!!item.email ? (
+                          <Text style={styles.optionEmail}>{item.email}</Text>
+                        ) : null}
+                      </View>
+
+                      {isSelected ? (
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={20}
+                          color={theme.colors.primary}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <Text style={styles.emptyDialogText}>
+                  No hay usuarios disponibles.
+                </Text>
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
+
+          <Dialog.Actions style={styles.assignDialogActions}>
+            <Button
+              onPress={() => setSelectedUsers([])}
+              textColor="#667085"
+              disabled={selectedUsers.length === 0}
+            >
+              Limpiar
+            </Button>
+
+            <Button
+              mode="contained"
+              onPress={() => setAssignDialogVisible(false)}
+              buttonColor={theme.colors.primary}
+              style={styles.assignDialogDoneButton}
+              contentStyle={styles.assignDialogDoneButtonContent}
+            >
+              Listo
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={successVisible}
+          onDismiss={handleCloseSuccess}
+          style={styles.successDialog}
+        >
           <Dialog.Content style={styles.successDialogContent}>
             <View style={styles.successIconCircle}>
               <MaterialCommunityIcons name="check-bold" size={30} color="#FFFFFF" />
@@ -432,7 +895,70 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#5E6E57",
     lineHeight: 21,
-    maxWidth: 320,
+    maxWidth: 340,
+  },
+
+  dateInfoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 16,
+    elevation: 2,
+  },
+
+  dateInfoCardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.995 }],
+  },
+
+  dateInfoIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  dateInfoTextWrap: {
+    flex: 1,
+  },
+
+  dateInfoLabel: {
+    fontSize: 12,
+    color: "#667085",
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+
+  dateInfoValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#1F2937",
+    textTransform: "capitalize",
+  },
+
+  iosDatePickerBox: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    borderRadius: 20,
+    marginBottom: 16,
+    paddingBottom: 12,
+    overflow: "hidden",
+  },
+
+  iosDateButton: {
+    marginHorizontal: 14,
+    borderRadius: 14,
   },
 
   card: {
@@ -445,13 +971,13 @@ const styles = StyleSheet.create({
 
   cardContent: {
     paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingTop: 20,
     paddingBottom: 18,
   },
 
   input: {
-    marginBottom: 14,
     backgroundColor: "#FFFFFF",
+    marginBottom: 14,
   },
 
   inputOutline: {
@@ -459,16 +985,16 @@ const styles = StyleSheet.create({
   },
 
   inputContent: {
-    paddingVertical: 4,
+    minHeight: 54,
   },
 
   textAreaContent: {
-    minHeight: 92,
-    textAlignVertical: "top",
+    minHeight: 120,
+    paddingTop: 12,
   },
 
   sectionHeader: {
-    marginTop: 4,
+    marginTop: 2,
     marginBottom: 10,
   },
 
@@ -476,6 +1002,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginBottom: 5,
   },
 
   sectionIconWrap: {
@@ -483,107 +1010,141 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 10,
     backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
     alignItems: "center",
     justifyContent: "center",
   },
 
   label: {
     fontWeight: "800",
-    color: "#1F2937",
+    color: "#344054",
   },
 
   sectionHint: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#6B7280",
+    fontSize: 12.5,
+    color: "#667085",
+    lineHeight: 18,
   },
 
-  segmented: {
-    marginBottom: 18,
-  },
-
-  segmentDefault: {
-    borderColor: "#D8E0CF",
-    backgroundColor: "#FFFFFF",
-  },
-
-  segmentHigh: {
-    backgroundColor: "#C62828",
-    borderColor: "#C62828",
-  },
-
-  segmentMedium: {
-    backgroundColor: "#B7791F",
-    borderColor: "#B7791F",
-  },
-
-  segmentLow: {
-    backgroundColor: "#2E7D32",
-    borderColor: "#2E7D32",
-  },
-
-  assignTrigger: {
-    minHeight: 68,
-    borderRadius: 18,
+  selectorTrigger: {
+    minHeight: 62,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#D7E0CE",
+    borderColor: "#C9D8BF",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
   },
 
-  assignLeft: {
+  selectorTriggerPressed: {
+    opacity: 0.9,
+  },
+
+  selectorLeft: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     flex: 1,
-    gap: 12,
   },
 
-  assignAvatar: {
+  selectorAvatar: {
     width: 40,
     height: 40,
     borderRadius: 14,
     backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  assignTextWrap: {
+  selectorTextWrap: {
     flex: 1,
   },
 
-  assignLabel: {
-    fontSize: 12,
-    color: "#6B7280",
+  selectorLabel: {
+    fontSize: 11.5,
+    color: "#667085",
+    fontWeight: "600",
     marginBottom: 2,
   },
 
-  assignValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
+  selectorValue: {
+    fontSize: 14.5,
+    fontWeight: "800",
+    color: "#344054",
   },
 
   chevronBadge: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: 12,
     backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#ECEFF3",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  menuContent: {
-    borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+  selectedUsersWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: -6,
+    marginBottom: 16,
+  },
+
+  selectedUserChip: {
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#DDEAD1",
+    borderRadius: 999,
+    paddingLeft: 5,
+    paddingRight: 8,
+    paddingVertical: 5,
+  },
+
+  selectedUserInitial: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: "#4E7A28",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  selectedUserInitialText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  selectedUserName: {
+    maxWidth: 190,
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#344054",
+  },
+
+  removeSelectedUserButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   infoBox: {
+    width: "100%",
     flexDirection: "row",
     gap: 8,
     alignItems: "flex-start",
@@ -593,7 +1154,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 14,
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   infoText: {
@@ -608,7 +1169,7 @@ const styles = StyleSheet.create({
   },
 
   saveButtonContent: {
-    height: 52,
+    height: 50,
   },
 
   saveButtonLabel: {
@@ -616,45 +1177,145 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  cancelButton: {
+    marginTop: 6,
+  },
+
+  selectDialog: {
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+  },
+
+  selectDialogTitle: {
+    fontWeight: "800",
+    color: "#1F2937",
+  },
+
+  selectDialogScrollArea: {
+    paddingHorizontal: 0,
+    maxHeight: 430,
+  },
+
+  selectScroll: {
+    maxHeight: 420,
+  },
+
+  selectScrollContent: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    gap: 10,
+  },
+
+  optionItem: {
+    minHeight: 58,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#ECEFF3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  optionItemPressed: {
+    opacity: 0.9,
+  },
+
+  optionItemSelected: {
+    backgroundColor: "#F6F9F2",
+    borderColor: "#D8E6CD",
+  },
+
+  optionAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E3ECD9",
+    backgroundColor: "#F6F9F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  optionTextWrap: {
+    flex: 1,
+  },
+
+  optionName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#344054",
+  },
+
+  optionEmail: {
+    fontSize: 12.5,
+    color: "#667085",
+    marginTop: 2,
+  },
+
+  emptyDialogText: {
+    color: "#667085",
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+
+  assignDialogActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    justifyContent: "space-between",
+  },
+
+  assignDialogDoneButton: {
+    borderRadius: 14,
+    minWidth: 104,
+  },
+
+  assignDialogDoneButtonContent: {
+    paddingHorizontal: 16,
+    height: 42,
+  },
+
   successDialog: {
-    borderRadius: 26,
+    borderRadius: 24,
     backgroundColor: "#FFFFFF",
   },
 
   successDialogContent: {
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 24,
+    paddingBottom: 18,
   },
 
   successIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#4E7A28",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
 
   successTitle: {
     fontWeight: "800",
-    color: "#234015",
-    marginBottom: 8,
+    color: "#1F2937",
     textAlign: "center",
+    marginBottom: 8,
   },
 
   successText: {
-    textAlign: "center",
     color: "#667085",
+    textAlign: "center",
     lineHeight: 21,
     marginBottom: 18,
   },
 
   successButton: {
-    borderRadius: 14,
-    alignSelf: "stretch",
-    marginBottom: 15
+    width: "100%",
+    borderRadius: 16,
   },
 
   successButtonContent: {

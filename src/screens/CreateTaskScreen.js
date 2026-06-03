@@ -49,6 +49,15 @@ function formatDateLabel(date) {
   }).format(date);
 }
 
+function getUserLabel(userItem) {
+  return userItem?.name || userItem?.email || "Usuario";
+}
+
+function getInitial(name) {
+  const safeName = String(name || "").trim();
+  return safeName ? safeName.charAt(0).toUpperCase() : "?";
+}
+
 export default function CreateTaskScreen({ navigation, route }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -63,8 +72,7 @@ export default function CreateTaskScreen({ navigation, route }) {
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
-  const [assignedTo, setAssignedTo] = useState(user?.uid || "");
-  const [assignedToName, setAssignedToName] = useState(user?.name || "Yo");
+  const [selectedUsers, setSelectedUsers] = useState([]);
   const [assignDialogVisible, setAssignDialogVisible] = useState(false);
 
   const [categoryKey, setCategoryKey] = useState(NOTE_CATEGORIES[0].key);
@@ -76,8 +84,13 @@ export default function CreateTaskScreen({ navigation, route }) {
 
   useEffect(() => {
     if (user?.uid) {
-      setAssignedTo(String(user.uid));
-      setAssignedToName(user.name || user.email || "Yo");
+      setSelectedUsers([
+        {
+          uid: String(user.uid),
+          name: user?.name || "Yo",
+          email: user?.email || "",
+        },
+      ]);
     }
   }, [user]);
 
@@ -125,10 +138,38 @@ export default function CreateTaskScreen({ navigation, route }) {
     );
   }, [users, user]);
 
-  const handleSelectUser = (selectedUser) => {
-    setAssignedTo(String(selectedUser.uid));
-    setAssignedToName(selectedUser.name || selectedUser.email || "Usuario");
-    setAssignDialogVisible(false);
+  const selectedUsersText = useMemo(() => {
+    if (usersLoading) return "Cargando usuarios...";
+    if (selectedUsers.length === 0) return "Seleccionar responsables";
+
+    if (selectedUsers.length === 1) {
+      return getUserLabel(selectedUsers[0]);
+    }
+
+    return `${selectedUsers.length} responsables seleccionados`;
+  }, [selectedUsers, usersLoading]);
+
+  const handleToggleUser = (selectedUser) => {
+    setSelectedUsers((prev) => {
+      const exists = prev.some(
+        (item) => String(item.uid) === String(selectedUser.uid)
+      );
+
+      if (exists) {
+        return prev.filter(
+          (item) => String(item.uid) !== String(selectedUser.uid)
+        );
+      }
+
+      return [
+        ...prev,
+        {
+          uid: String(selectedUser.uid),
+          name: selectedUser.name || selectedUser.email || "Usuario",
+          email: selectedUser.email || "",
+        },
+      ];
+    });
   };
 
   const handleSelectCategory = (item) => {
@@ -150,8 +191,8 @@ export default function CreateTaskScreen({ navigation, route }) {
       return;
     }
 
-    if (!assignedTo) {
-      Alert.alert("Atención", "Elegí a quién asignar la tarea.");
+    if (selectedUsers.length === 0) {
+      Alert.alert("Atención", "Elegí al menos un responsable.");
       return;
     }
 
@@ -163,14 +204,27 @@ export default function CreateTaskScreen({ navigation, route }) {
     try {
       setSaving(true);
 
+      const firstAssignedUser = selectedUsers[0];
+
       await createTask({
         title: title.trim(),
         description: description.trim(),
         categoryKey,
+        categoryLabel: selectedCategory.label,
         createdBy: user?.uid ? String(user.uid) : "",
         createdByName: user?.name || user?.email || "Usuario",
-        assignedTo: String(assignedTo),
-        assignedToName,
+
+        // Campos viejos para mantener compatibilidad:
+        assignedTo: String(firstAssignedUser.uid),
+        assignedToName: getUserLabel(firstAssignedUser),
+
+        // Campo nuevo para múltiples responsables:
+        assignedUsers: selectedUsers.map((item) => ({
+          uid: String(item.uid),
+          name: item.name || item.email || "Usuario",
+          email: item.email || "",
+        })),
+
         dueDate: dueDate.toISOString(),
         dueDateTimestamp: dueDate.getTime(),
         hasDueDate: true,
@@ -178,8 +232,17 @@ export default function CreateTaskScreen({ navigation, route }) {
 
       setTitle("");
       setDescription("");
-      setAssignedTo(user?.uid ? String(user.uid) : "");
-      setAssignedToName(user?.name || user?.email || "Yo");
+      setSelectedUsers(
+        user?.uid
+          ? [
+              {
+                uid: String(user.uid),
+                name: user?.name || "Yo",
+                email: user?.email || "",
+              },
+            ]
+          : []
+      );
       setCategoryKey(NOTE_CATEGORIES[0].key);
 
       setSuccessVisible(true);
@@ -213,14 +276,13 @@ export default function CreateTaskScreen({ navigation, route }) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-
             <View style={styles.headerBlock}>
               <Text variant="headlineMedium" style={styles.title}>
                 Nueva tarea
               </Text>
 
               <Text variant="bodyMedium" style={styles.subtitle}>
-                Creá una tarea para el día seleccionado, asignale responsable y categoría.
+                Creá una tarea para el día seleccionado, asignale responsables y categoría.
               </Text>
             </View>
 
@@ -351,16 +413,20 @@ export default function CreateTaskScreen({ navigation, route }) {
                   <View style={styles.sectionTitleRow}>
                     <View style={styles.sectionIconWrap}>
                       <MaterialCommunityIcons
-                        name="account-check-outline"
+                        name="account-multiple-check-outline"
                         size={16}
                         color={theme.colors.primary}
                       />
                     </View>
 
                     <Text variant="titleSmall" style={styles.label}>
-                      Asignar a
+                      Responsables
                     </Text>
                   </View>
+
+                  <Text style={styles.sectionHint}>
+                    Podés seleccionar una o varias personas para esta tarea.
+                  </Text>
                 </View>
 
                 <Pressable
@@ -369,23 +435,24 @@ export default function CreateTaskScreen({ navigation, route }) {
                       setAssignDialogVisible(true);
                     }
                   }}
-                  style={styles.selectorTrigger}
+                  style={({ pressed }) => [
+                    styles.selectorTrigger,
+                    pressed && styles.selectorTriggerPressed,
+                  ]}
                 >
                   <View style={styles.selectorLeft}>
                     <View style={styles.selectorAvatar}>
                       <MaterialCommunityIcons
-                        name="account-outline"
+                        name="account-multiple-outline"
                         size={18}
                         color={theme.colors.primary}
                       />
                     </View>
 
                     <View style={styles.selectorTextWrap}>
-                      <Text style={styles.selectorLabel}>Responsable</Text>
+                      <Text style={styles.selectorLabel}>Responsables</Text>
                       <Text style={styles.selectorValue}>
-                        {usersLoading
-                          ? "Cargando usuarios..."
-                          : assignedToName || "Seleccionar"}
+                        {selectedUsersText}
                       </Text>
                     </View>
                   </View>
@@ -402,6 +469,36 @@ export default function CreateTaskScreen({ navigation, route }) {
                     )}
                   </View>
                 </Pressable>
+
+                {selectedUsers.length > 0 ? (
+                  <View style={styles.selectedUsersWrap}>
+                    {selectedUsers.map((item) => (
+                      <View key={item.uid} style={styles.selectedUserChip}>
+                        <View style={styles.selectedUserInitial}>
+                          <Text style={styles.selectedUserInitialText}>
+                            {getInitial(getUserLabel(item))}
+                          </Text>
+                        </View>
+
+                        <Text style={styles.selectedUserName} numberOfLines={1}>
+                          {getUserLabel(item)}
+                        </Text>
+
+                        <Pressable
+                          onPress={() => handleToggleUser(item)}
+                          hitSlop={8}
+                          style={styles.removeSelectedUserButton}
+                        >
+                          <MaterialCommunityIcons
+                            name="close"
+                            size={14}
+                            color="#667085"
+                          />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
 
                 <View style={styles.infoBox}>
                   <MaterialCommunityIcons
@@ -520,7 +617,7 @@ export default function CreateTaskScreen({ navigation, route }) {
           style={styles.selectDialog}
         >
           <Dialog.Title style={styles.selectDialogTitle}>
-            Seleccionar responsable
+            Seleccionar responsables
           </Dialog.Title>
 
           <Dialog.ScrollArea style={styles.selectDialogScrollArea}>
@@ -531,20 +628,24 @@ export default function CreateTaskScreen({ navigation, route }) {
             >
               {selectableUsers.length > 0 ? (
                 selectableUsers.map((item) => {
-                  const isSelected = String(item.uid) === String(assignedTo);
+                  const isSelected = selectedUsers.some(
+                    (selectedUser) =>
+                      String(selectedUser.uid) === String(item.uid)
+                  );
 
                   return (
                     <Pressable
                       key={item.uid}
-                      onPress={() => handleSelectUser(item)}
-                      style={[
+                      onPress={() => handleToggleUser(item)}
+                      style={({ pressed }) => [
                         styles.optionItem,
                         isSelected && styles.optionItemSelected,
+                        pressed && styles.optionItemPressed,
                       ]}
                     >
                       <View style={styles.optionAvatar}>
                         <MaterialCommunityIcons
-                          name="account-outline"
+                          name={isSelected ? "account-check-outline" : "account-outline"}
                           size={18}
                           color={theme.colors.primary}
                         />
@@ -579,6 +680,25 @@ export default function CreateTaskScreen({ navigation, route }) {
               )}
             </ScrollView>
           </Dialog.ScrollArea>
+
+          <Dialog.Actions style={styles.assignDialogActions}>
+            <Button
+              onPress={() => setSelectedUsers([])}
+              textColor="#667085"
+              disabled={selectedUsers.length === 0}
+            >
+              Limpiar
+            </Button>
+
+            <Button
+              mode="contained"
+              onPress={() => setAssignDialogVisible(false)}
+              buttonColor={theme.colors.primary}
+              style={styles.assignDialogDoneButton}
+            >
+              Listo
+            </Button>
+          </Dialog.Actions>
         </Dialog>
 
         <Dialog
@@ -839,6 +959,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  selectedUsersWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: -6,
+    marginBottom: 16,
+  },
+
+  selectedUserChip: {
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F6F9F2",
+    borderWidth: 1,
+    borderColor: "#DDEAD1",
+    borderRadius: 999,
+    paddingLeft: 5,
+    paddingRight: 8,
+    paddingVertical: 5,
+  },
+
+  selectedUserInitial: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: "#4E7A28",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  selectedUserInitialText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  selectedUserName: {
+    maxWidth: 190,
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#344054",
+  },
+
+  removeSelectedUserButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   infoBox: {
     width: "100%",
     flexDirection: "row",
@@ -956,6 +1128,17 @@ const styles = StyleSheet.create({
     color: "#667085",
     textAlign: "center",
     paddingVertical: 20,
+  },
+
+  assignDialogActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    justifyContent: "space-between",
+  },
+
+  assignDialogDoneButton: {
+    borderRadius: 14,
+    minWidth: 96,
   },
 
   successDialog: {

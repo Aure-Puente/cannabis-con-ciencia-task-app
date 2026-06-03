@@ -8,6 +8,15 @@
     "scheme": "cannabisconciencia",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "notification": {
+      "icon": "./assets/adaptive-icon.png",
+      "color": "#4E7A28"
+    },
     "ios": {
       "supportsTablet": true
     },

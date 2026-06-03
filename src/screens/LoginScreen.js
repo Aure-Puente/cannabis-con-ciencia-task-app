@@ -72,7 +72,7 @@ export default function LoginScreen({ navigation }) {
                 </View>
 
                 <Text variant="headlineMedium" style={styles.title}>
-                  Cannabis con Ciencia
+                  Cannabis ConCiencia
                 </Text>
 
                 <Text variant="bodyMedium" style={styles.subtitle}>

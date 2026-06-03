@@ -156,18 +156,20 @@ export default function NotesScreen({ navigation }) {
           <View style={styles.categoriesHeader}>
             <Text style={styles.categoriesTitle}>Filtrar por categoría</Text>
 
-            {activeCategoryFilter ? (
-              <Button
-                mode="text"
-                compact
-                onPress={() => setActiveCategoryFilter(null)}
-                textColor="#667085"
-                style={styles.clearFilterButton}
-                labelStyle={styles.clearFilterLabel}
-              >
-                Limpiar
-              </Button>
-            ) : null}
+            <Button
+              mode="text"
+              compact
+              onPress={() => setActiveCategoryFilter(null)}
+              disabled={!activeCategoryFilter}
+              textColor="#667085"
+              style={[
+                styles.clearFilterButton,
+                !activeCategoryFilter && styles.clearFilterButtonHidden,
+              ]}
+              labelStyle={styles.clearFilterLabel}
+            >
+              Limpiar
+            </Button>
           </View>
 
           <View style={styles.categoriesPreview}>
@@ -489,7 +491,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 5,
   },
 
   categoriesTitle: {
@@ -500,6 +502,12 @@ const styles = StyleSheet.create({
 
   clearFilterButton: {
     margin: 0,
+    width: 74,
+    alignItems: "flex-end",
+  },
+
+  clearFilterButtonHidden: {
+    opacity: 0,
   },
 
   clearFilterLabel: {
